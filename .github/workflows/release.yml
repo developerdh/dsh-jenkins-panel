@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Release 正文要读快照链历史（自上个 tag 以来的提交）与 tag
 
       - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager 字段
 
@@ -51,9 +53,31 @@ jobs:
         run: |
           ARGS=()
           case "${GITHUB_REF_NAME}" in *-*) ARGS+=(--prerelease);; esac # 0.1.0-rc.1 → 预发布
+
+          # Release 正文 = 附注 tag 上的版本说明（-n 策划）+ 自上个 tag 以来的快照清单 + 安装方式
+          TAG_MSG=$(git tag -l --format='%(contents)' "${GITHUB_REF_NAME}")
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          RANGE="${GITHUB_REF_NAME}"
+          [ -n "$PREV" ] && RANGE="${PREV}..${GITHUB_REF_NAME}"
+          CHANGES=$(git log --format='- %s' $RANGE)
+          BODY="${TAG_MSG}"
+          [ -n "$CHANGES" ] && BODY="${BODY}
+
+          ## What's Changed
+
+          ${CHANGES}"
+          BODY="${BODY}
+
+          ## Install
+
+          \`\`\`bash
+          npm install ./dsh-jenkins-panel-*.tgz
+          \`\`\`"
+
           # 幂等：tag 重打/重触发时已存在 Release 则仅覆盖资产，不报错
           if gh release view "${GITHUB_REF_NAME}" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "${GITHUB_REF_NAME}" -R "$GITHUB_REPOSITORY" dsh-jenkins-panel-*.tgz --clobber
+            gh release edit "${GITHUB_REF_NAME}" -R "$GITHUB_REPOSITORY" --notes "$BODY"
           else
-            gh release create "${GITHUB_REF_NAME}" -R "$GITHUB_REPOSITORY" --title "${GITHUB_REF_NAME}" --generate-notes "${ARGS[@]}" dsh-jenkins-panel-*.tgz
+            gh release create "${GITHUB_REF_NAME}" -R "$GITHUB_REPOSITORY" --title "${GITHUB_REF_NAME}" --notes "$BODY" "${ARGS[@]}" dsh-jenkins-panel-*.tgz
           fi

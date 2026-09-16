@@ -20,6 +20,7 @@
  *   node scripts/export-public.mjs --push                   # 导出后推送 github 远端（public:main + 版本 tag）
  *   node scripts/export-public.mjs --remote gh              # 指定远端名（默认 github）
  *   node scripts/export-public.mjs -m "feat: ..."           # 策划公开提交信息（首个 -m 为主题，其余为正文段落）
+ *   node scripts/export-public.mjs -n "版本说明..."          # 策划 Release 说明（写入附注 tag，Actions 组装进 Release 正文）
  *   node scripts/export-public.mjs <内部提交>               # 导出指定内部提交（重建快照链用）
  *
  * 提交信息口径：面向公众的人工策划文案（推荐），不携带内部提交 subject / 任务编号；
@@ -36,6 +37,7 @@ import { spawnSync } from 'node:child_process'
 /* ── 参数 ──────────────────────────────────────────────────────────── */
 const argv = process.argv.slice(2)
 const messages = [] // -m/--message 收集：首个为主题，其余为正文段落
+const notes = [] // -n/--notes 收集：版本 tag 附带的 Release 说明（首个为主题，其余为段落）
 let REMOTE = 'github'
 let target // 位置参数：要导出的内部提交（缺省 HEAD）
 let doPush = false
@@ -45,6 +47,7 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === '--remote') REMOTE = argv[++i]
   else if (a === '-m' || a === '--message') messages.push(argv[++i])
+  else if (a === '-n' || a === '--notes') notes.push(argv[++i])
   else if (a === '--push') doPush = true
   else if (a === '--no-tag') tagEnabled = false
   else if (a.startsWith('-')) throw new Error(`未知参数：${a}`)
@@ -124,7 +127,11 @@ try {
     const tag = releaseTag
     const existing = spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`], { encoding: 'utf8' })
     if (existing.status !== 0) {
-      git(['tag', tag, commit])
+      // 附注 tag：tag message 即 Release 说明（-n 策划；缺省一行），Actions 据此组装 Release 正文
+      const tagSubject = notes[0] ?? `Release ${tag}`
+      const tagArgs = ['tag', '-a', tag, commit, '-m', tagSubject]
+      for (const paragraph of notes.slice(1)) tagArgs.push('-m', paragraph)
+      git(tagArgs)
       console.log(`[export-public] ✓ 已打 tag ${tag} → ${commit.slice(0, 10)}（push 后触发 Actions 构建 Release）`)
     } else if (existing.stdout.trim() !== commit) {
       console.warn(`[export-public] ⚠ tag ${tag} 已指向另一快照（${existing.stdout.trim().slice(0, 10)}），未移动；发布新版本请升 package.json version`)
