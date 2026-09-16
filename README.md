@@ -16,7 +16,14 @@ Jenkins CI/CD integration plugin for [DeepSeek Harness](https://www.deepseek.com
 前置：dsh 0.1.5+（web profile）。
 
 ```sh
+# npm 发布版（推荐，构建产物随包分发）
 dsh plugin --profile <name> add dsh-jenkins-panel@<version>
+```
+
+也可以直接从 GitHub 安装（仓库内 `prepare` 脚本会在安装时自动构建）：
+
+```sh
+npm install github:developerdh/dsh-jenkins-panel
 ```
 
 安装后在 dsh 设置页「Jenkins 连接」分区配置连接（URL/用户名/超时）与每连接 Token，重载页面即可在右侧栏与顶部栏入口看到面板。

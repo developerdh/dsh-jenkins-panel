@@ -25,6 +25,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prepare": "pnpm build",
     "export:public": "node scripts/export-public.mjs"
   },
   "dependencies": {

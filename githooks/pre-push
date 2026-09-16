@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+/**
+ * pre-push 钩子：GitHub 远端泄露防线（第二道；第一道是 scripts/export-public.mjs 的快照树安全闸）
+ *
+ * 规则：对 github 远端（按远端名 github / URL 含 github.com 识别）的任何推送，逐 ref 校验
+ * 「本次推上去的每个提交，其树中都不得含 docs/」。内部 main（携带 docs 的完整历史）推往
+ * github 会被直接拒绝；origin（cnb 私有仓）不受任何影响。
+ *
+ * 因此这些命令都会被拦下：
+ *   git push github main            # 内部主历史（含 docs）→ 拒绝
+ *   git push github --all / --mirror # 全部分支/引用 → 含 docs 的 ref 全部拒绝
+ *   git push github <内部tag>        # 指向内部提交的 tag → 拒绝
+ *   git push github :main           # 删除远端 main → 拒绝
+ * 唯一通行证：
+ *   node scripts/export-public.mjs --push   # 或 git push github public:main
+ *
+ * 安装（每台开发机一次，钩子目录已入库）：
+ *   git config core.hooksPath githooks
+ * 自测（不触网）：
+ *   printf 'refs/heads/main    <内部sha> refs/heads/main 0000000\n' | node githooks/pre-push github u  # exit 1
+ *   printf 'refs/heads/public  <快照sha> refs/heads/main 0000000\n' | node githooks/pre-push github u  # exit 0
+ */
+// 注意：本文件无扩展名，Node 22 模块探测将其按 ESM 解析（仓库 package.json 亦是 type=module），
+// 必须用 import 语法；git 在 Windows 上经 bundled sh 以 `node <钩子>` 方式执行，shebang 必须保留。
+import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+
+const PROTECTED_REMOTE_NAMES = new Set(['github'])
+const PROTECTED_URL_PART = 'github.com'
+const PROTECTED_REF = 'refs/heads/main'
+const FORBIDDEN_PATHS = ['docs']
+
+function fail(message) {
+  process.stderr.write(`[pre-push] ✗ ${message}\n`)
+  process.exit(1)
+}
+
+function git(args) {
+  const r = spawnSync('git', args, { encoding: 'utf8' })
+  if (r.status !== 0) fail(`git ${args.join(' ')} 失败：${r.stderr.trim()}`)
+  return r.stdout
+}
+
+const remoteName = process.argv[2] || ''
+const remoteUrl = process.argv[3] || ''
+const isGithub = PROTECTED_REMOTE_NAMES.has(remoteName) || remoteUrl.includes(PROTECTED_URL_PART)
+if (!isGithub) process.exit(0) // origin（cnb 私有仓）不设限
+
+const lines = readFileSync(0, 'utf8').split('\n').filter((line) => line.trim())
+for (const line of lines) {
+  const [localRef, localSha, remoteRef] = line.trim().split(/\s+/)
+
+  // 不允许删除远端 main
+  if (remoteRef === PROTECTED_REF && /^0+$/.test(localSha || '')) {
+    fail('不允许删除 github 远端的 main（公开快照链只能前进）')
+  }
+  if (!localSha || /^0+$/.test(localSha)) continue
+
+  // 只校验提交类对象；附注 tag 先解引用到提交
+  const type = git(['cat-file', '-t', localSha]).trim()
+  let sha = localSha
+  if (type === 'tag') sha = git(['rev-parse', `${localSha}^{commit}`]).trim()
+  else if (type !== 'commit') fail(`拒绝向 github 推送非提交对象：${localRef}（${type}）`)
+
+  // 内容校验：该 ref 可达的每个提交，树中都不得含 docs/（内部历史第一个提交就带 docs，秒拒）
+  const commits = git(['rev-list', sha]).trim().split('\n').filter(Boolean)
+  for (const c of commits) {
+    const hit = git(['ls-tree', '--name-only', c, '--', ...FORBIDDEN_PATHS]).trim()
+    if (hit) {
+      fail(
+        `拒绝推送到 github：${localRef} 的历史包含内部内容（${c.slice(0, 10)} 含 ${hit}）。\n` +
+          '  github 只接收导出快照链：node scripts/export-public.mjs --push',
+      )
+    }
+  }
+}
+process.stdout.write('[pre-push] ✓ github 推送校验通过（无内部内容）\n')
+process.exit(0)
