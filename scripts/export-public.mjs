@@ -22,7 +22,7 @@
  *
  * 首次使用前：git remote add github <你的GitHub仓库地址>
  */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -94,12 +94,27 @@ try {
   console.log(`[export-public] ✓ ${headShort} → public 快照 ${commit.slice(0, 10)}（父：${parentRef ? parentRef.slice(0, 10) : '无，首例'}）`)
   console.log(`[export-public] ✓ 快照顶层：${topLevel.join(' ')}`)
 
+  /* ── 版本 tag：给快照打 v<package.json version>，触发 GitHub Actions 构建 Release ──
+   * 同版本重复导出：tag 已指向本快照 → 跳过；指向别的快照 → 警告不动（发新版请升版本号） */
+  const version = JSON.parse(readFileSync('package.json', 'utf8')).version
+  const tag = `v${version}`
+  const existing = spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`], { encoding: 'utf8' })
+  if (existing.status !== 0) {
+    git(['tag', tag, commit])
+    console.log(`[export-public] ✓ 已打 tag ${tag} → ${commit.slice(0, 10)}（push 后触发 Actions 构建 Release）`)
+  } else if (existing.stdout.trim() !== commit) {
+    console.warn(`[export-public] ⚠ tag ${tag} 已指向另一快照（${existing.stdout.trim().slice(0, 10)}），未移动；发布新版本请升 package.json version`)
+  } else {
+    console.log(`[export-public] tag ${tag} 已在本快照，跳过`)
+  }
+
   /* ── 推送 ──────────────────────────────────────────────────────── */
   if (hasFlag('--push')) {
     git(['push', REMOTE, `${LOCAL_BRANCH}:${TARGET_REF}`])
-    console.log(`[export-public] ✓ 已推送 ${LOCAL_BRANCH} → ${REMOTE}/${TARGET_REF}`)
+    git(['push', REMOTE, `refs/tags/${tag}`]) // 已是最新时 up-to-date 无害；pre-push 钩子会校验 tag 指向 docs-free 快照
+    console.log(`[export-public] ✓ 已推送 ${LOCAL_BRANCH} → ${REMOTE}/${TARGET_REF} 及 tag ${tag}`)
   } else {
-    console.log(`[export-public] 未推送。确认后执行：git push ${REMOTE} ${LOCAL_BRANCH}:${TARGET_REF}`)
+    console.log(`[export-public] 未推送。确认后执行：git push ${REMOTE} ${LOCAL_BRANCH}:${TARGET_REF} 与 git push ${REMOTE} refs/tags/${tag}`)
   }
 } finally {
   rmSync(indexFile, { force: true })

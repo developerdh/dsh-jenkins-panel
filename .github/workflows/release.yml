@@ -1,0 +1,54 @@
+# 发布流水线：收到 v* tag 时构建产物并挂到 GitHub Release。
+#
+# 触发链：内部升 package.json version → node scripts/export-public.mjs --push
+# （自动为快照打 v<version> tag 并推送）→ 本 workflow 构建 → Release 挂 npm pack 产物。
+# 产物 = npm pack 的 tgz（含 lib/、dsh.plugin.json、cordis.patch.yml），可直接
+# `npm install <tgz>` 安装；后续 npm 正式发布用同一 files 口径。
+#
+# workflow_dispatch 支持在 Actions 页手动跑（仅校验，不发布）。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # gh release create 需要写 Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager 字段
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint / Typecheck / Test
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Pack
+        run: npm pack # 触发 prepare（重新构建，保证产物新鲜）
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ARGS=()
+          case "${GITHUB_REF_NAME}" in *-*) ARGS+=(--prerelease);; esac # 0.1.0-rc.1 → 预发布
+          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes "${ARGS[@]}" dsh-jenkins-panel-*.tgz

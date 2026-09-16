@@ -26,6 +26,8 @@ dsh plugin --profile <name> add dsh-jenkins-panel@<version>
 npm install github:developerdh/dsh-jenkins-panel
 ```
 
+每次版本发布（`v*` tag）会由 CI 自动构建并挂到 [Releases](https://github.com/developerdh/dsh-jenkins-panel/releases)，可下载 `dsh-jenkins-panel-<版本>.tgz` 后 `npm install <tgz 路径>` 安装。
+
 安装后在 dsh 设置页「Jenkins 连接」分区配置连接（URL/用户名/超时）与每连接 Token，重载页面即可在右侧栏与顶部栏入口看到面板。
 
 ## 配置速览
