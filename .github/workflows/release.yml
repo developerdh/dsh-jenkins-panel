@@ -51,4 +51,9 @@ jobs:
         run: |
           ARGS=()
           case "${GITHUB_REF_NAME}" in *-*) ARGS+=(--prerelease);; esac # 0.1.0-rc.1 → 预发布
-          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes "${ARGS[@]}" dsh-jenkins-panel-*.tgz
+          # 幂等：tag 重打/重触发时已存在 Release 则仅覆盖资产，不报错
+          if gh release view "${GITHUB_REF_NAME}" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" -R "$GITHUB_REPOSITORY" dsh-jenkins-panel-*.tgz --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" -R "$GITHUB_REPOSITORY" --title "${GITHUB_REF_NAME}" --generate-notes "${ARGS[@]}" dsh-jenkins-panel-*.tgz
+          fi
