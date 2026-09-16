@@ -1,0 +1,20 @@
+{
+  // Client 半（浏览器）类型检查配置：src/client/（TSX，React 19 automatic JSX runtime）。
+  // 实际产物由 tsup 产出（lib/client.js），本配置仅用于 typecheck/编辑器。
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/client"],
+  "exclude": ["lib", "node_modules", "dist"]
+}

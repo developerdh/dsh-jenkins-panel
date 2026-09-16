@@ -1,0 +1,10 @@
+{
+  "id": "dsh-external/dsh-jenkins-panel",
+  "main": "lib/index.js",
+  "client": {
+    "main": "lib/client.js"
+  },
+  "contributes": {
+    "tools": []
+  }
+}

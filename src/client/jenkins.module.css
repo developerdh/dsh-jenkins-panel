@@ -1,0 +1,1535 @@
+/* dsh-jenkins-panel 面板样式模块（0.1.5 挂载改造后；architecture §1）
+ *
+ * 命名隔离口径：类名/CSS 变量/data 属性统一 dsh-jenkins-panel-* / jenkins_*。
+ *
+ * ⚠️ CSS 交付方式（0.1.5 实测，关键）：本文件在构建期被 scripts/build-client.mjs 的
+ * css-collect 插件改写成「运行时注入 <style>」的 JS 模块——CSS 文本以 JS 字符串嵌入
+ * client bundle，加载时注入 `<style data-plugin-css="dsh-jenkins-panel/jenkins.module.css">`
+ * （幂等去重；better-sidebar 同款、该宿主实测可行）。两条死路别走：`import '*.css'`
+ * 交给宿主模块表解析必然 miss（`*.css` 不在 0.1.5 模块表）；抽成 `lib/client.css`
+ * 旁置文件没人消费——宿主对外部插件没有 CSS 加载通道（官方插件的 CSS 是 shell
+ * 构建期内联进 `index-*.css` 的）。
+ *
+ * 主题（V9/V10，用户反馈：参考 Codex/DSH 界面风格 + 跟随 DSH 深色/浅色）：
+ * - 主题信号 = DSH 契约 `body[data-ds-dark-theme]`：**无该属性 = 浅色（默认）、
+ *   有 = 深色**。主题变量默认定义在 :root（浅色），深色整块覆盖在
+ *   `body[data-ds-dark-theme]`（body 级覆盖，面板/设置卡片经 CSS 继承自动跟随，
+ *   无需 JS 同步）。
+ * - 强调色 = DSH DeepSeek 品牌蓝：浅色 #4176e6（= --dsw-static-deepseek-500）、
+ *   深色 #679efe（= --dsw-static-deepseek-400）。
+ * - **任务状态色不随主题调整**（ok 绿 / fail 红 / run 蓝 / warn 黄 / aborted / disabled
+ *   等语义色保持原值，见 --dsh-st-* 注释）。
+ * - 间距/圆角/字体按 Codex 观感：圆角 8-12px、控件过渡、focus-visible 描边、
+ *   细滚动条、日志等宽字体。
+ *
+ * 几何（0.1.5 实测）：面板本体是官方右侧栏页签的正文，**定位/列宽/列推挤/resize handle
+ * 全归官方 `rightbar` 列**；本文件只负责面板内部布局与视觉。0.1.1 的固定含块、z-index 栈、
+ * `#root` 推挤过渡、窄屏抽屉断点、自绘宽度（--dsh-jenkins-panel-width / resize-grip）全部移除。
+ */
+
+/* —— 主题色板：浅色默认（DSH：body 无 data-ds-dark-theme = 浅色） —— */
+:root {
+  --dsh-bg-inset: #f2f4f8;      /* 日志 / 滚动容器等内嵌区（最深层） */
+  --dsh-bg-base: #f8fafc;       /* 基底 / 面板头部 */
+  --dsh-bg-panel: #ffffff;      /* 面板本体 */
+  --dsh-bg-elev: #f6f8fb;       /* 卡片 / 控件 */
+  --dsh-bg-elev2: #edf0f5;      /* 悬浮 / 菜单 / 滚动容器 */
+  --dsh-bg-field: #ffffff;      /* 输入框 */
+
+  --dsh-border: rgba(15, 23, 42, 0.08);
+  --dsh-border-strong: rgba(15, 23, 42, 0.14);
+
+  --dsh-text: #1b2437;          /* 主文本 */
+  --dsh-text-2: #5d6b80;        /* 次级文本 */
+  --dsh-text-3: #8b95a7;        /* 弱化文本 / 辅助信息 */
+  --dsh-log-text: #2a3348;      /* 日志正文 */
+
+  --dsh-accent: #4176e6;            /* 强调色（DSH 品牌蓝 --dsw-static-deepseek-500，浅色） */
+  --dsh-accent-strong: #3567d6;     /* 强调色高亮（hover/描边） */
+  --dsh-accent-soft: rgba(65, 118, 230, 0.1);
+  --dsh-accent-soft2: rgba(65, 118, 230, 0.18);
+  --dsh-accent-border: rgba(65, 118, 230, 0.45);
+
+  --dsh-hover: rgba(15, 23, 42, 0.05);          /* 行/tab 悬浮底 */
+  --dsh-hover-strong: rgba(15, 23, 42, 0.09);   /* 按钮/图标悬浮底 */
+  --dsh-scroll-thumb: rgba(15, 23, 42, 0.16);
+  --dsh-scroll-thumb-hover: rgba(15, 23, 42, 0.28);
+  --dsh-selection: rgba(65, 118, 230, 0.18);
+  --dsh-on-fail: #b3261e;       /* fail 语义上的文字（confirm 框） */
+
+  --dsh-shadow-panel: -12px 0 32px rgba(15, 23, 42, 0.14);
+  --dsh-shadow-pop: 0 8px 28px rgba(15, 23, 42, 0.18);
+  --dsh-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --dsh-shadow-card-hover: 0 2px 8px rgba(15, 23, 42, 0.1);
+
+  /* 任务状态语义色：**保持原值，不随主题调整**（用户 V9 红线） */
+  --dsh-st-ok: #3fb96b;
+  --dsh-st-fail: #e05d5d;
+  --dsh-st-run: #4a9eff;
+  --dsh-st-warn: #e0a03f;
+  --dsh-st-aborted: #8b93a3;
+  --dsh-st-disabled: #5a6270;
+
+  --dsh-radius-s: 6px;
+  --dsh-radius-m: 8px;
+  --dsh-radius-l: 10px;
+  --dsh-radius-xl: 12px;
+
+  --dsh-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "PingFang SC",
+    "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --dsh-font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono",
+    "Fira Code", Consolas, monospace;
+}
+
+/* —— 深色主题覆盖（DSH 契约：body[data-ds-dark-theme] = 深色；变量在 body 级覆盖，
+ *   面板/设置卡片均为 body 后代，经 CSS 继承自动跟随，无需 JS 同步）
+ *   底色按 DSH neutral-bluish 刻度对齐（V10 反馈：面板黑与 DSH 默认一致）：
+ *   面板本体 = alias-bg-base bluish-950 #151517；卡片/控件 = layer-1 bluish-875
+ *   #232324；悬浮/菜单 = layer-2 bluish-850 #2c2c2e；头部 = bluish-900 #1b1b1c。 —— */
+body[data-ds-dark-theme] {
+  --dsh-bg-inset: #0d0d0f;      /* 日志 / 输入等内嵌区（比面板略深，终端感） */
+  --dsh-bg-base: #1b1b1c;       /* 基底 / 面板头部（bluish-900） */
+  --dsh-bg-panel: #151517;      /* 面板本体（bluish-950 = DSH 深色应用背景） */
+  --dsh-bg-elev: #232324;       /* 卡片 / 控件（bluish-875 = DSH layer-1） */
+  --dsh-bg-elev2: #2c2c2e;      /* 悬浮 / 菜单 / 滚动容器（bluish-850 = DSH layer-2） */
+  --dsh-bg-field: #1b1b1c;      /* 输入框（bluish-900） */
+
+  --dsh-border: rgba(255, 255, 255, 0.08);
+  --dsh-border-strong: rgba(255, 255, 255, 0.14);
+
+  --dsh-text: #e8ebef;
+  --dsh-text-2: #a9b1bf;
+  --dsh-text-3: #707a8a;
+  --dsh-log-text: #c9d1dc;
+
+  --dsh-accent: #679efe;            /* 强调色（DSH 品牌蓝 --dsw-static-deepseek-400，深色） */
+  --dsh-accent-strong: #8ab4ff;
+  --dsh-accent-soft: rgba(103, 158, 254, 0.13);
+  --dsh-accent-soft2: rgba(103, 158, 254, 0.24);
+  --dsh-accent-border: rgba(103, 158, 254, 0.45);
+
+  --dsh-hover: rgba(255, 255, 255, 0.05);
+  --dsh-hover-strong: rgba(255, 255, 255, 0.09);
+  --dsh-scroll-thumb: rgba(255, 255, 255, 0.14);
+  --dsh-scroll-thumb-hover: rgba(255, 255, 255, 0.24);
+  --dsh-selection: rgba(103, 158, 254, 0.25);
+  --dsh-on-fail: #e8b4b4;
+
+  --dsh-shadow-panel: -12px 0 32px rgba(0, 0, 0, 0.45);
+  --dsh-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.5);
+  --dsh-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --dsh-shadow-card-hover: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* 面板本体（0.1.5）：官方右侧栏页签正文，**不定位、不设宽**——列容器已给足尺寸。
+ * 本元素 = React 渲染的 div[data-dsh-jenkins-panel]（挂载锚点）。 */
+[data-dsh-jenkins-panel] {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: var(--dsh-bg-panel);
+  color: var(--dsh-text);
+  font-family: var(--dsh-font);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* 面板内部结构（原型 .jenkins-inner / .header 口径） */
+.jenkins_panelInner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden; /* 圆角/滚动由内部 body 承担 */
+}
+
+.jenkins_header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--dsh-border);
+  background: var(--dsh-bg-base);
+  flex: 0 0 auto;
+}
+
+.jenkins_logo {
+  color: var(--dsh-accent);
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 面板头部 Jenkins 官方 favicon（用户 V7：图标 +「Jenkins面板」） */
+.jenkins_logoImg {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: 3px;
+  display: block;
+}
+
+.jenkins_title {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.jenkins_live {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  /* 状态更新时间移至「Jenkins面板」标题后方（不再右对齐）；圆点在文字后方，顺序见 DOM */
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--dsh-text-3);
+  white-space: nowrap;
+}
+
+.jenkins_liveDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsh-accent);
+  box-shadow: 0 0 6px var(--dsh-accent-border);
+  animation: jenkins_pulse 1s infinite;
+}
+
+@keyframes jenkins_pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.jenkins_iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 7px;
+  border-radius: var(--dsh-radius-m);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--dsh-text-2);
+  font-size: 13px;
+  line-height: 1;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.jenkins_iconBtn:hover {
+  background: var(--dsh-hover-strong);
+  color: var(--dsh-text);
+}
+
+/* 内容区：CLIENT-M2-03/04/06 视图挂入点（data-dsh-jenkins-panel-content） */
+.jenkins_body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+  /* 细滚动条（Codex 观感） */
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsh-scroll-thumb) transparent;
+}
+
+.jenkins_body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.jenkins_body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.jenkins_body::-webkit-scrollbar-thumb {
+  background: var(--dsh-scroll-thumb);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.jenkins_body::-webkit-scrollbar-thumb:hover {
+  background: var(--dsh-scroll-thumb-hover);
+  background-clip: padding-box;
+}
+
+/* 构建详情容器：垂直 flex 撑满 body，使日志框可下探到页面底部 */
+[data-dsh-jenkins-panel-build-detail] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+/* 日志子视图：flex 撑满剩余高度，内部日志框 flex:1 填到底 */
+.jenkins_logView {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.jenkins_empty {
+  text-align: center;
+  color: var(--dsh-text-2);
+  padding: 40px 10px;
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+
+/* 入口（CLIENT-M2-02，改造）：接入宿主 `sidebar.footer.action`（与 dsh-eap-todo 同位置，
+ * 左侧栏底部入口）。列表槽位加性，多个插件入口竖排共存。 */ 
+.jenkins_entryIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--dsh-radius-s);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.jenkins_entryIcon:hover {
+  background: var(--dsh-hover-strong);
+  color: var(--dsh-text);
+}
+
+/* active 态轻高亮（面板打开时点亮，不改变整体形态） */
+.jenkins_entryIconActive {
+  color: var(--dsh-accent);
+  background: var(--dsh-accent-soft);
+}
+
+/* 入口文字（wide 时显示；narrow 56px rail 只显图标） */
+.jenkins_entryLabel {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 入口图标为 Jenkins 官方 favicon（用户 V7）：contain 缩放不变形，圆角裁切贴合图标形状 */
+.jenkins_entryIconImg {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: 3px;
+  display: block;
+}
+
+/* ===== CLIENT-M2-04 任务视图：连接切换器（prototype .conn-bar/.conn-switch 口径） ===== */
+.jenkins_connBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.jenkins_connLabel {
+  font-size: 11px;
+  color: var(--dsh-text-2);
+  flex: 0 0 auto;
+}
+
+.jenkins_connSwitchWrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.jenkins_connSwitch {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+
+.jenkins_connSwitch::-webkit-scrollbar {
+  display: none;
+}
+
+/* 溢出时边缘渐隐遮罩（原型 .conn-switch.scrollable） */
+.jenkins_connSwitch.jenkins_connScrollable {
+  mask-image: linear-gradient(to right, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+}
+
+.jenkins_connChip {
+  flex: 0 0 auto;
+  max-width: 128px;
+  padding: 5px 11px;
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-m);
+  cursor: pointer;
+  color: var(--dsh-text-2);
+  font-size: 12px;
+  background: var(--dsh-bg-elev);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.jenkins_connChip:hover {
+  border-color: var(--dsh-accent);
+  color: var(--dsh-text);
+}
+
+.jenkins_connChipOn {
+  background: var(--dsh-accent-soft);
+  border-color: var(--dsh-accent-border);
+  color: var(--dsh-accent);
+}
+
+.jenkins_connTag {
+  font-size: 10px;
+  opacity: 0.75;
+  margin-left: 4px;
+}
+
+.jenkins_connTagWarn {
+  color: var(--dsh-st-warn);
+  opacity: 1;
+}
+
+/* 总览顶栏：连接自定义下拉（对齐 dsh/Codex UI，用 dsw token，缺省回退暗色） */
+.jenkins_selectWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.jenkins_selectTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--dsw-alias-border-l2, var(--dsh-border));
+  border-radius: var(--dsh-radius-m);
+  background: var(--dsw-alias-bg-layer-3, var(--dsh-bg-elev));
+  color: var(--dsw-alias-label-primary, var(--dsh-text));
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s ease;
+}
+.jenkins_selectTrigger:hover {
+  border-color: var(--dsw-alias-border-l3, var(--dsh-accent));
+}
+
+.jenkins_selectValue {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.jenkins_selectChevron {
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-label-secondary, var(--dsh-text-3));
+  flex: 0 0 auto;
+  transition: transform 0.12s;
+}
+.jenkins_selectWrap[data-open] .jenkins_selectChevron {
+  transform: rotate(180deg);
+}
+
+.jenkins_selectMenu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 4px;
+  margin: 0;
+  list-style: none;
+  background: var(--dsw-specific-menu, var(--dsh-bg-elev2));
+  border: 1px solid var(--dsw-alias-border-inverted, var(--dsh-border-strong));
+  border-radius: var(--dsh-radius-xl);
+  box-shadow: var(--dsw-shadow-lv3, var(--dsh-shadow-pop));
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsh-scroll-thumb) transparent;
+}
+
+.jenkins_selectOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--dsh-radius-m);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary, var(--dsh-text));
+  transition: background 0.1s ease;
+}
+.jenkins_selectOption:hover {
+  background: var(--dsw-alias-interactive-bg-hover, var(--dsh-hover));
+}
+.jenkins_selectOptionOn {
+  background: var(--dsh-accent-soft);
+  color: var(--dsh-accent);
+}
+.jenkins_selectOptionLabel {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+}
+.jenkins_selectOptionTag {
+  font-size: 10px;
+  color: var(--dsh-accent);
+  border: 1px solid var(--dsh-accent-border);
+  border-radius: 5px;
+  padding: 0 5px;
+  flex: 0 0 auto;
+}
+
+/* 记录行：工作区名（小号弱色虚线标签） */
+.jenkins_wsTag {
+  font-size: 10px;
+  color: var(--dsh-text-3);
+  border: 1px dashed var(--dsh-border-strong);
+  border-radius: 5px;
+  padding: 0 6px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jenkins_connArrow {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 24px;
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-s);
+  background: var(--dsh-bg-elev);
+  color: var(--dsh-text-2);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.jenkins_connArrowShow {
+  display: inline-flex;
+}
+
+.jenkins_connArrow:hover {
+  border-color: var(--dsh-accent);
+  color: var(--dsh-accent);
+}
+
+/* 搜索框（原型 .search 口径） */
+.jenkins_search {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.jenkins_search input {
+  flex: 1;
+  min-width: 0;
+  background: var(--dsh-bg-inset);
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-m);
+  color: var(--dsh-text);
+  padding: 7px 10px;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.jenkins_search input::placeholder {
+  color: var(--dsh-text-3);
+}
+
+.jenkins_search input:focus {
+  border-color: var(--dsh-accent);
+  box-shadow: 0 0 0 2px var(--dsh-accent-soft);
+}
+
+/* ===== 多层级任务树（prototype .tree/.tnode/.tree-children 口径） ===== */
+.jenkins_tree {
+  margin-top: 4px;
+}
+
+.jenkins_tnode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--dsh-radius-m);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s ease;
+}
+
+.jenkins_tnode:hover {
+  background: var(--dsh-hover);
+}
+
+.jenkins_tnodeLoading {
+  opacity: 0.55;
+}
+
+.jenkins_twist {
+  width: 12px;
+  flex: 0 0 auto;
+  text-align: center;
+  color: var(--dsh-text-3);
+  font-size: 10px;
+}
+
+.jenkins_fico {
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
+.jenkins_tnodeName {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.jenkins_tnodeDisplay {
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jenkins_tnodePath {
+  font-size: 10.5px;
+  color: var(--dsh-text-3);
+  font-family: var(--dsh-font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jenkins_tnodeCount {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--dsh-text-3);
+  flex: 0 0 auto;
+}
+
+.jenkins_tnodeError {
+  font-size: 11px;
+  color: var(--dsh-st-fail);
+  padding: 2px 6px 2px 32px;
+}
+
+/* P0-b：当前工作区未能解析时的如实提示（chip 显示「当前工作区」却列出全部工作区记录时必须吭声） */
+.jenkins_wsWarn {
+  margin: 0 0 8px;
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--dsh-st-warn);
+  background: var(--dsh-bg-elev);
+  border: 1px solid var(--dsh-border);
+  border-left: 2px solid var(--dsh-st-warn);
+  border-radius: 4px;
+}
+
+.jenkins_tnodeLoadingRow {
+  font-size: 11px;
+  color: var(--dsh-text-3);
+  padding: 3px 6px 3px 32px;
+}
+
+.jenkins_treeChildren {
+  margin-left: 14px;
+  border-left: 1px dashed var(--dsh-border-strong);
+  padding-left: 4px;
+}
+
+.jenkins_matchHl {
+  color: var(--dsh-accent);
+  background: var(--dsh-accent-soft);
+  border-radius: 2px;
+}
+
+/* 状态点（prototype .st 口径；colorToStatus 映射驱动）——
+ * **任务状态色保持原值**（V9 红线，不随主题调整） */
+.jenkins_st {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: inline-block; /* 标题内联（非 flex）时也能呈现圆形色点 */
+}
+
+.jenkins_stOk { background: var(--dsh-st-ok); }
+.jenkins_stFail { background: var(--dsh-st-fail); }
+.jenkins_stRun { background: var(--dsh-st-run); animation: jenkins_pulse 1s infinite; }
+.jenkins_stDisabled { background: var(--dsh-st-disabled); }
+.jenkins_stAborted { background: var(--dsh-st-aborted); }
+.jenkins_stWarn { background: var(--dsh-st-warn); }
+
+/* 任务详情占位（CLIENT-M2-04 阶段 6；M2-05 复用骨架） */
+/* 返回按钮（用户反馈：原灰色文字不够明显——改成带边框/底色的小按钮） */
+.jenkins_back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-m);
+  background: var(--dsh-bg-elev);
+  color: var(--dsh-text-2);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  user-select: none;
+  width: fit-content;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.jenkins_back:hover {
+  border-color: var(--dsh-accent);
+  background: var(--dsh-accent-soft);
+  color: var(--dsh-text);
+}
+
+.jenkins_detailHead {
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-l);
+  background: var(--dsh-bg-elev);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  box-shadow: var(--dsh-shadow-card);
+}
+
+.jenkins_detailTitle {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.jenkins_detailSub {
+  font-size: 11px;
+  color: var(--dsh-text-2);
+  margin-top: 3px;
+  font-family: var(--dsh-font-mono);
+}
+
+/* 返回 + 构建标题同行（用户优化：标题移到「返回」按钮后会放大字体；构建详情专用行） */
+.jenkins_buildHeaderRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+
+.jenkins_buildHeaderRow .jenkins_back {
+  margin-bottom: 0; /* 与标题同行，去掉自身下边距 */
+  flex: 0 0 auto;
+}
+
+.jenkins_buildTitle {
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 标题各段之间的点号分隔（用户优化：console SZ #162 → console · SZ · #162） */
+.jenkins_buildSep {
+  color: var(--dsh-text-3);
+  margin: 0 6px;
+  font-weight: 400;
+}
+
+.jenkins_buildTitle .jenkins_connTag {
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 0; /* 点号已带间距，去掉 connTag 全局 margin-left */
+}
+
+/* 构建参数（用户优化：任务触发的参数信息，每行一个） */
+.jenkins_params {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dsh-border);
+}
+
+.jenkins_paramsTitle {
+  font-size: 11px;
+  color: var(--dsh-text-3);
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+
+/* 参数明细：相对「构建参数」标题缩进；`key:` 整体作为一列（冒号紧贴 key，间距恒定），
+   右侧 Value 列对齐（用户优化：消除 key 与冒号间空格忽多忽少的问题） */
+.jenkins_paramRow {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 8px;
+  align-items: baseline;
+  padding-left: 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: var(--dsh-font-mono);
+  word-break: break-all;
+}
+
+.jenkins_paramKey {
+  color: var(--dsh-text-3);
+  white-space: nowrap; /* key + 冒号保持在一行 */
+}
+
+.jenkins_paramColon {
+  color: var(--dsh-text-3);
+  margin-left: 2px;
+  user-select: none;
+}
+
+.jenkins_paramValue {
+  color: var(--dsh-text);
+}
+
+/* ===== CLIENT-M2-06 构建详情：操作/sub-tabs/日志/产物/工作空间 ===== */
+
+.jenkins_ops {
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  margin-left: auto;  /* 操作按钮靠右：与任务名行同排居右展示 */
+  flex: 0 0 auto;
+}
+
+/* 任务名行 + 操作按钮同排（用户优化：重试/删除移到与 devops/console 一行居右） */
+.jenkins_detailTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.jenkins_detailTop .jenkins_detailSub {
+  margin-top: 0;
+  min-width: 0;
+}
+
+/* 任务名链接（用户优化：点击新窗口打开任务界面） */
+.jenkins_jobLink {
+  color: var(--dsh-accent);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.jenkins_jobLink:hover {
+  text-decoration: underline;
+  color: var(--dsh-accent-strong);
+}
+
+.jenkins_pillBtn {
+  border: 1px solid var(--dsh-border-strong);
+  background: var(--dsh-bg-elev);
+  color: var(--dsh-text);
+  padding: 5px 12px;
+  border-radius: var(--dsh-radius-m);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.4;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.jenkins_pillBtn:hover:not(:disabled) {
+  border-color: var(--dsh-accent);
+  color: var(--dsh-accent);
+}
+
+.jenkins_pillBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.jenkins_pillBtnDanger:hover:not(:disabled) {
+  border-color: var(--dsh-st-fail);
+  color: var(--dsh-st-fail);
+}
+
+.jenkins_opMessage {
+  font-size: 12px;
+  color: var(--dsh-st-warn);
+  margin-top: 6px;
+}
+
+.jenkins_subTabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.jenkins_subTab {
+  padding: 5px 12px;
+  border-radius: var(--dsh-radius-m);
+  cursor: pointer;
+  color: var(--dsh-text-2);
+  font-size: 12px;
+  user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.jenkins_subTab:hover {
+  background: var(--dsh-hover);
+  color: var(--dsh-text);
+}
+
+.jenkins_subTabOn {
+  background: var(--dsh-accent-soft);
+  color: var(--dsh-accent);
+}
+
+/* 日志（prototype .log/.err/.ln 口径；终端观感） */
+.jenkins_toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+/* 日志子视图工具条：按钮组居右（用户 V10 反馈），且位于日志框**下方**（上方留距） */
+.jenkins_logView > .jenkins_toolbar {
+  justify-content: flex-end;
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.jenkins_log {
+  background: var(--dsh-bg-inset);
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-l);
+  padding: 10px 12px;
+  font-family: var(--dsh-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--dsh-log-text);
+  flex: 1;              /* 日志框下探填满剩余高度（用户要求：直到页面底部） */
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsh-scroll-thumb) transparent;
+}
+
+.jenkins_log::-webkit-scrollbar {
+  width: 8px;
+}
+
+.jenkins_log::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.jenkins_log::-webkit-scrollbar-thumb {
+  background: var(--dsh-scroll-thumb);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.jenkins_logLine {
+  min-height: 1.4em;
+}
+
+.jenkins_logLn {
+  color: var(--dsh-text-3);
+  user-select: none;
+  display: inline-block;
+  min-width: 3.5em;
+  margin-right: 10px;
+  text-align: right;
+}
+
+.jenkins_logErr {
+  color: var(--dsh-st-fail);
+}
+
+.jenkins_logEmpty {
+  background: var(--dsh-bg-inset);
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-l);
+  padding: 14px;
+  color: var(--dsh-text-2);
+  font-size: 12px;
+}
+
+.jenkins_note {
+  font-size: 11px;
+  color: var(--dsh-text-3);
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+/* 日志视图提示行：文字上移 + 与日志框留 6px 间距；上移量与间距抵消 → 总高不变，
+ * 日志框（flex:1）高度不被压缩（用户 V10 反馈） */
+.jenkins_logView > .jenkins_note {
+  margin-top: 2px;
+  margin-bottom: 6px;
+}
+
+/* 提示行内「点击查看完整日志」链接（打开 Jenkins console 页） */
+.jenkins_noteLink {
+  color: var(--dsh-accent);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.jenkins_noteLink:hover {
+  color: var(--dsh-accent-strong);
+  text-decoration: underline;
+}
+
+/* 通用行（产物/记录行） */
+.jenkins_row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--dsh-radius-m);
+  transition: background 0.1s ease;
+}
+
+.jenkins_row:hover {
+  background: var(--dsh-hover);
+}
+
+.jenkins_rowMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.jenkins_pathText {
+  font-family: var(--dsh-font-mono);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jenkins_downloadLink {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--dsh-accent);
+  text-decoration: none;
+  transition: color 0.12s ease;
+}
+
+.jenkins_downloadLink:hover {
+  text-decoration: underline;
+  color: var(--dsh-accent-strong);
+}
+
+.jenkins_groupTitle {
+  font-size: 11px;
+  color: var(--dsh-text-3);
+  padding: 8px 2px 4px;
+  letter-spacing: 0.02em;
+}
+
+.jenkins_paramDef {
+  padding: 6px 4px 6px 14px;
+  border-radius: var(--dsh-radius-m);
+}
+
+/* 参数定义容器：块包裹 + 超限滚动（非默认滚动条样式；用户反馈：参数多时不要占满整页） */
+.jenkins_paramDefBox {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-l);
+  background: var(--dsh-bg-elev2);
+  padding: 4px 2px 4px 0;
+  /* Firefox 细滚动条 + 配色 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsh-scroll-thumb) transparent;
+}
+
+.jenkins_paramDefBox::-webkit-scrollbar {
+  width: 8px;
+}
+
+.jenkins_paramDefBox::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.jenkins_paramDefBox::-webkit-scrollbar-thumb {
+  background: var(--dsh-scroll-thumb);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.jenkins_paramDefBox::-webkit-scrollbar-thumb:hover {
+  background: var(--dsh-accent);
+  background-clip: padding-box;
+}
+
+.jenkins_paramDefBox::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.jenkins_paramDefHead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--dsh-font-mono);
+  font-size: 12px;
+}
+
+.jenkins_paramDefName {
+  color: var(--dsh-text);
+  font-weight: 600;
+}
+
+.jenkins_paramDefType {
+  color: var(--dsh-text-2);
+  font-size: 11px;
+}
+
+.jenkins_paramDefDesc {
+  font-size: 11px;
+  color: var(--dsh-text-2);
+  margin-top: 2px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.jenkins_paramDefMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--dsh-text-3);
+  margin-top: 3px;
+  font-family: var(--dsh-font-mono);
+  word-break: break-all;
+}
+
+.jenkins_kv {
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.jenkins_kvKey {
+  color: var(--dsh-text-3);
+}
+
+.jenkins_confirmBox {
+  border: 1px solid rgba(224, 93, 93, 0.45);
+  border-radius: var(--dsh-radius-m);
+  background: rgba(224, 93, 93, 0.08);
+  padding: 10px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--dsh-on-fail);
+}
+
+/* CLIENT-M2-05 任务详情：构建历史行右侧元信息（时间/耗时/结果） */
+.jenkins_metaRight {
+  font-size: 11px;
+  color: var(--dsh-text-3);
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+/* 总览行右侧：时间 + 状态并排（用户 V7：空间充足，无需堆叠） */
+.jenkins_metaRight.jenkins_metaInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* ===== CLIENT-M2-03 总览：tab/chips/记录行/删除 ===== */
+
+.jenkins_tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dsh-border);
+  flex: 0 0 auto;
+}
+
+.jenkins_tab {
+  flex: 1 1 0;
+  text-align: center;
+  padding: 6px 0;
+  border-radius: var(--dsh-radius-m);
+  cursor: pointer;
+  color: var(--dsh-text-2);
+  font-size: 12px;
+  user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.jenkins_tab:hover {
+  background: var(--dsh-hover);
+  color: var(--dsh-text);
+}
+
+.jenkins_tabOn {
+  background: var(--dsh-accent-soft);
+  color: var(--dsh-accent);
+}
+
+.jenkins_overviewToolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.jenkins_overviewToolbar .jenkins_connLabel {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* 右对齐的「当前工作区 / 刷新」按钮组（连接过滤居左） */
+.jenkins_overviewToolbarRight {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.jenkins_chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.jenkins_chip {
+  border: 1px solid var(--dsh-border);
+  background: var(--dsh-bg-elev);
+  color: var(--dsh-text-2);
+  padding: 4px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-family: inherit;
+  line-height: 1.4;
+  appearance: none;
+  user-select: none;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.jenkins_chip:hover {
+  border-color: var(--dsh-accent);
+  color: var(--dsh-text);
+}
+
+.jenkins_chipOn {
+  background: var(--dsh-accent-soft);
+  border-color: var(--dsh-accent-border);
+  color: var(--dsh-accent);
+}
+
+.jenkins_chipCount {
+  opacity: 0.75;
+}
+
+/* 排队中状态点（黄色，原型 .st.queued = warn 色；状态色保持原值） */
+.jenkins_stQueued {
+  background: var(--dsh-st-warn);
+}
+
+.jenkins_rowDel {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--dsh-radius-s);
+  background: transparent;
+  color: var(--dsh-text-3);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.jenkins_rowDel:hover {
+  color: var(--dsh-st-fail);
+  background: rgba(224, 93, 93, 0.12);
+}
+
+/* ===== CLIENT-M2-07 设置卡片（prototype jenkins-settings 口径） ===== */
+.jenkins_settingsCard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 760px;
+}
+
+.jenkins_settingDesc {
+  font-size: 12px;
+  color: var(--dsh-text-2);
+  max-width: 680px;
+  line-height: 1.7;
+}
+
+.jenkins_settingEmpty {
+  text-align: center;
+  color: var(--dsh-text-2);
+  padding: 24px 10px;
+  font-size: 12px;
+}
+
+.jenkins_connCard {
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-xl);
+  background: var(--dsh-bg-elev);
+  padding: 14px 16px;
+  box-shadow: var(--dsh-shadow-card);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.jenkins_connCard:hover {
+  border-color: var(--dsh-border-strong);
+  box-shadow: var(--dsh-shadow-card-hover);
+}
+
+.jenkins_connCardTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jenkins_connCardName {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.jenkins_badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--dsh-border-strong);
+  color: var(--dsh-text-2);
+}
+
+.jenkins_badgeDefault {
+  color: var(--dsh-accent);
+  border-color: var(--dsh-accent-border);
+  background: var(--dsh-accent-soft);
+}
+
+.jenkins_testResult {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+
+/* 测试结果颜色 = 状态语义色，保持原值 */
+.jenkins_testOk { color: var(--dsh-st-ok); }
+.jenkins_testFail { color: var(--dsh-st-fail); }
+
+.jenkins_testDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.jenkins_connCardKv {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  row-gap: 3px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.jenkins_connCardV {
+  font-family: var(--dsh-font-mono);
+  font-size: 11.5px;
+  word-break: break-all;
+  color: var(--dsh-text);
+}
+
+.jenkins_pillBtnPrimary {
+  background: var(--dsh-accent-soft);
+  border-color: var(--dsh-accent);
+  color: var(--dsh-accent);
+}
+
+.jenkins_pillBtnPrimary:hover:not(:disabled) {
+  background: var(--dsh-accent-soft2);
+}
+
+/* 开关类按钮选中态（如「自动跟随」开）：强调色描边 + 淡底色 + 强调色文字；关闭态无此样式 */
+.jenkins_pillBtnOn {
+  background: var(--dsh-accent-soft);
+  border-color: var(--dsh-accent);
+  color: var(--dsh-accent);
+}
+
+.jenkins_pillBtnOn:hover:not(:disabled) {
+  background: var(--dsh-accent-soft2);
+}
+
+.jenkins_formPanel {
+  border: 1px solid var(--dsh-border-strong);
+  border-radius: var(--dsh-radius-xl);
+  background: var(--dsh-bg-elev);
+  padding: 18px 18px 14px;
+  box-shadow: 0 0 0 1px var(--dsh-accent-soft), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+/* 编辑态表单：原位替换对应连接卡片，强调色描边高亮（区别于新增表单，提示当前正在修改哪条记录） */
+.jenkins_formPanelEdit {
+  border-color: var(--dsh-accent);
+  box-shadow: 0 0 0 1px var(--dsh-accent-soft2), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.jenkins_formTitle {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 18px;
+}
+
+.jenkins_field {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: start;
+  column-gap: 10px;
+  row-gap: 4px;
+  margin-bottom: 16px;
+}
+
+.jenkins_field > label {
+  font-size: 12.5px;
+  color: var(--dsh-text-2);
+  text-align: right;
+  padding-top: 9px;
+  line-height: 1.4;
+}
+
+.jenkins_req {
+  color: var(--dsh-st-fail);
+}
+
+.jenkins_field input {
+  background: var(--dsh-bg-field);
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius-m);
+  color: var(--dsh-text);
+  padding: 8px 11px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.jenkins_field input::placeholder {
+  color: var(--dsh-text-3);
+}
+
+.jenkins_field input:focus {
+  outline: none;
+  border-color: var(--dsh-accent);
+  box-shadow: 0 0 0 2px var(--dsh-accent-soft);
+}
+
+.jenkins_field input:disabled {
+  opacity: 0.6;
+}
+
+.jenkins_fieldHint {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--dsh-text-3);
+  margin-top: 6px;
+  line-height: 1.6;
+}
+
+.jenkins_fieldHint code {
+  font-family: var(--dsh-font-mono);
+  color: var(--dsh-accent);
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.jenkins_checkRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  grid-column: 2;
+  font-size: 12px;
+  color: var(--dsh-text-2);
+  text-align: left !important;
+}
+
+.jenkins_checkRow input {
+  width: auto;
+}
+
+.jenkins_formOps {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-left: 120px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.jenkins_formErr {
+  color: var(--dsh-st-fail);
+  font-size: 11.5px;
+  margin-top: 6px;
+  padding-left: 118px;
+}
+
+/* 通用交互：键盘焦点描边（Codex 观感），不改变鼠标态 */
+[data-dsh-jenkins-panel] button:focus-visible,
+[data-dsh-jenkins-panel-settings] button:focus-visible,
+[data-dsh-jenkins-panel] input:focus-visible,
+[data-dsh-jenkins-panel-settings] input:focus-visible,
+[data-dsh-jenkins-panel] a:focus-visible,
+[data-dsh-jenkins-panel-settings] a:focus-visible {
+  outline: 2px solid var(--dsh-accent);
+  outline-offset: 1px;
+}
+
+/* 面板内文本选区（强调色半透明） */
+[data-dsh-jenkins-panel] ::selection {
+  background: var(--dsh-selection);
+}

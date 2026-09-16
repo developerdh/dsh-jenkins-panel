@@ -1,0 +1,21 @@
+{
+  // Host 半（Node）类型检查配置：src/（不含 src/client/）+ tests/ + 工程配置文件。
+  // 实际产物由 tsup 产出（lib/index.js），本配置仅用于 typecheck/编辑器。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "tests", "tsup.config.ts", "vitest.config.ts"],
+  "exclude": ["src/client", "tests/e2e", "lib", "node_modules", "dist", ".pnpm-cache"]
+}

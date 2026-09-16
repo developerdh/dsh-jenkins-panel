@@ -1,0 +1,30 @@
+# Node
+node_modules/
+lib/
+dist/
+*.tsbuildinfo
+
+# pnpm local cache/store (kept inside workspace for sandbox compatibility)
+.pnpm-cache/
+.pnpm-store/
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local dsh profile artifacts
+.dsh/
+*.local.yml
+.agents
+
+# Build/pack artifacts
+*.tgz

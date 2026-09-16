@@ -1,0 +1,87 @@
+{
+  "name": "dsh-jenkins-panel",
+  "version": "0.1.0-rc.1",
+  "description": "Jenkins CI/CD integration plugin for DeepSeek Harness (dsh): AI-invocable jenkins_* tools (build trigger/status/log/history/artifacts, job ops), official right-sidebar panel (triggered-build overview, multi-level job tree, build log & artifacts viewer), connection & token settings card, and automatic build-failure analysis pushed back into the triggering session.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "dsh.plugin.json",
+    "cordis.patch.yml"
+  ],
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup && node scripts/build-client.mjs",
+    "build:client": "node scripts/build-client.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "export:public": "node scripts/export-public.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "axios": "^1.20.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-credentials": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-session": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-util-values": "^0.1.5-rc.1",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^22.8.7",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.35.0",
+    "tsup": "^8.2.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.19.1",
+    "vitest": "^3.2.2"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-api-gateway",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "external": [
+        "react",
+        "react-dom",
+        "react/jsx-runtime",
+        "react-dom/client"
+      ]
+    }
+  },
+  "pnpm": {
+    "overrides": {
+      "@deepseek-ai/cordis": "4.0.2"
+    }
+  }
+}
