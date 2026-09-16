@@ -30,6 +30,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          registry-url: 'https://registry.npmjs.org' # npm publish 凭据写入 .npmrc（NODE_AUTH_TOKEN）
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -46,6 +47,20 @@ jobs:
       - name: Pack
         run: npm pack # 触发 prepare（重新构建，保证产物新鲜）
 
+      - name: Publish to npm
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if npm view "dsh-jenkins-panel@$VERSION" version >/dev/null 2>&1; then
+            echo "dsh-jenkins-panel@$VERSION 已在 npm 上，跳过发布"
+          else
+            PUBLISH_ARGS=()
+            case "$VERSION" in *-*) PUBLISH_ARGS+=(--tag prerelease);; *) PUBLISH_ARGS+=(--tag latest);; esac
+            npm publish "${PUBLISH_ARGS[@]}"
+          fi
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -54,24 +69,27 @@ jobs:
           ARGS=()
           case "${GITHUB_REF_NAME}" in *-*) ARGS+=(--prerelease);; esac # 0.1.0-rc.1 → 预发布
 
-          # Release 正文 = 附注 tag 上的版本说明（-n 策划）+ 自上个 tag 以来的快照清单 + 安装方式
+          # Release 正文 = 附注 tag 上的版本说明（-n 策划）+ 更新内容（自上个 tag 以来的快照清单）+ 安装方式
           TAG_MSG=$(git tag -l --format='%(contents)' "${GITHUB_REF_NAME}")
           PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
           RANGE="${GITHUB_REF_NAME}"
           [ -n "$PREV" ] && RANGE="${PREV}..${GITHUB_REF_NAME}"
           CHANGES=$(git log --format='- %s' $RANGE)
+          VER="${GITHUB_REF_NAME#v}"
           BODY="${TAG_MSG}"
           [ -n "$CHANGES" ] && BODY="${BODY}
 
-          ## What's Changed
+          ## 更新内容
 
           ${CHANGES}"
           BODY="${BODY}
 
-          ## Install
+          ## 安装
 
-          \`\`\`bash
-          npm install ./dsh-jenkins-panel-*.tgz
+          前置：dsh 0.1.5+（web profile）。
+
+          \`\`\`sh
+          dsh plugin --profile <name> add dsh-jenkins-panel@${VER}
           \`\`\`"
 
           # 幂等：tag 重打/重触发时已存在 Release 则仅覆盖资产，不报错

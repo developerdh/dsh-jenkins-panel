@@ -1,7 +1,7 @@
 # e2e（面板挂载）
 
-真实浏览器 e2e（FIN-M3-02 阶段 4）。**归用户环境运行**：依赖运行中的 dsh web（默认
-`http://127.0.0.1:3080`）且 dsh-jenkins-panel 已安装（`FIN-M3-01` 完成后），本仓库构建/单测/tsc
+真实浏览器 e2e。**归用户环境运行**：依赖运行中的 dsh web（默认
+`http://127.0.0.1:3080`）且 dsh-jenkins-panel 已安装，本仓库构建/单测/tsc
 均不触碰本目录（`tests/**/*.spec.ts` 不被 vitest 收录；`tests/e2e` 已从 tsconfig.json exclude）。
 
 > 0.1.5：面板迁入官方右侧栏后，**better-sidebar 互斥用例（`mutex.spec.ts`）与探针
@@ -10,7 +10,8 @@
 
 ## 前置
 
-1. **安装插件**：`FIN-M3-01` 打包发布完成，`dsh plugin add` 安装 dsh-jenkins-panel 到 3080 实例
+1. **安装插件**：通过 npm 发布版（`dsh plugin add dsh-jenkins-panel@<版本>`）、本页 Release 的
+   tgz 或 GitHub 源安装 dsh-jenkins-panel 到 3080 实例
    （未安装时挂载用例将明确失败）。
 2. **依赖**：`@playwright/test` 已在 devDependencies（安装时 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`
    跳过浏览器下载；e2e 复用本机已装浏览器）。

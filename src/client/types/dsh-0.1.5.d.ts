@@ -13,6 +13,9 @@
  * - `ctx.sidebarRight` / `ctx.sidebarRightTabs`：`@deepseek-ai/dsh-client-ui-sidebar-right/lib/types/client/index.d.ts`
  * - `ctx.sessions`：`@deepseek-ai/dsh-api-session-controller/lib/types/client/contract/sessions.d.ts`
  * - `ctx.uiConversation`：`@deepseek-ai/dsh-client-ui-conversation/lib/types/client/index.d.ts`
+ *
+ * 来源与许可：类型面镜像自 MIT 许可的 `@deepseek-ai/dsh-*` 0.1.5 包（Copyright DeepSeek），
+ * 仅保留本插件使用的最小面；随本仓库（MIT）分发。
  */
 import type { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 
