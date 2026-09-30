@@ -414,7 +414,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Je
 
 /**
  * 注册 /jenkins/api 前缀路由（WebRoute kind='prefix'，匹配 /jenkins/api/<method> 与 /jenkins/api/file）。
- * 接线方（apply/HOST-M1-05）组装 deps；本函数经 ctx.webServer.register 注册，随 fiber 卸载清理。
+ * 接线方（apply/HOST-M1-05）组装 deps。
+ *
+ * ⚠️ 生命周期（0.2.0 实测勘误）：`ctx.webServer.register` 返回的 disposer 是路由唯一的
+ * 清理通道（duplicate (kind, path) 直接抛错），「随 fiber 卸载自动清理」的旧假设不成立
+ * ——插件重载/重装时残留路由会让下次激活抛 `duplicate prefix route "/jenkins/api"`
+ * 而整片激活失败。故经 `ctx.effect` 挂注册，register 自带的 disposer 交给 effect 生命周期。
  */
 export function registerJenkinsRoutes(ctx: Context, deps: JenkinsRoutesDeps): void {
   const route: WebRoute = {
@@ -422,5 +427,5 @@ export function registerJenkinsRoutes(ctx: Context, deps: JenkinsRoutesDeps): vo
     path: '/jenkins/api',
     handler: (req, res) => handleRequest(req, res, deps),
   }
-  ctx.webServer.register(route)
+  ctx.effect(() => ctx.webServer.register(route), 'dsh-jenkins-panel: /jenkins/api routes')
 }

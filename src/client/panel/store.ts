@@ -6,7 +6,8 @@
  * - **宽度（含拖拽调宽）归官方 `rightbar` 列几何**——插件不再自绘宽度。
  *
  * 故本 store 只保留「当前激活会话 id」这一仍属插件自有的状态：面板内容按会话隔离
- * （总览/任务视图的会话口径随 `ctx.sessions.list.current` 走）。
+ * （总览/任务视图的会话口径随 `ctx.sidebarRight.mounted` 走；0.2.0 起
+ * `sessions.list.current` 已删除，mounted 是官方唯一的当前会话语义出口）。
  *
  * visible（面板是否展开）：由官方库驱动（`isExpanded()`），不再由本 store 表达；
  * 面板内轮询门控改由宿主注入的 visible 布尔（panel-host 从官方状态派生后下传）。
@@ -28,7 +29,7 @@ export class PanelStore {
   /** 当前激活会话 id（稳定快照） */
   getActiveSessionId = (): string | undefined => this.activeSessionId
 
-  /** 会话切换：面板内容（总览/任务）随当前会话走（ctx.sessions.list.current 变化时调用） */
+  /** 会话切换：面板内容（总览/任务）随当前会话走（ctx.sidebarRight.mounted 变化时调用） */
   setActiveSession = (sessionId: string | undefined): void => {
     if (this.activeSessionId === sessionId) return
     this.activeSessionId = sessionId

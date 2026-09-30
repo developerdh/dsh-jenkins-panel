@@ -5,21 +5,26 @@
  * - 清理：dry-run **预览**（workspace.cleanup dryRun=true，不执行）→ 二次确认 →
  *   执行（dryRun=false）；操作后显示结果。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
-import { cleanupWorkspace, fetchWorkspaceInfo, type WorkspaceInfo } from '../api.js'
+import { cleanupWorkspace, fetchWorkspaceInfo, isNotFoundError, type WorkspaceInfo } from '../api.js'
 
 export interface WorkspaceViewProps {
   connection: string
   jobName: string
   queued: boolean
   sessionId?: string
+  /**
+   * 取数失败时的替换错误信息（构建详情在「记录失效」时下传归因说明 + 删除链接）；
+   * 缺省按原样展示 `加载失败：<error>`。
+   */
+  errorNotice?: ReactNode
 }
 
 /** 清理确认流状态（纯状态机，供测试断言） */
 export type CleanupFlow = 'idle' | 'previewing' | 'confirming' | 'cleaning' | 'done'
 
-export function WorkspaceView({ connection, jobName, queued, sessionId }: WorkspaceViewProps) {
+export function WorkspaceView({ connection, jobName, queued, sessionId, errorNotice }: WorkspaceViewProps) {
   const [info, setInfo] = useState<WorkspaceInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [flow, setFlow] = useState<CleanupFlow>('idle')
@@ -46,11 +51,15 @@ export function WorkspaceView({ connection, jobName, queued, sessionId }: Worksp
   if (queued) {
     return <div className="jenkins_empty">构建未开始，无工作空间</div>
   }
+  // 记录失效（上层判定）：本视图的取数必然同样 404，直接展示上层给的归因说明（含删除链接）
+  if (errorNotice) return <div className="jenkins_empty">{errorNotice}</div>
   if (error) {
+    // 404 语义：等上层的「记录失效」判定（errorNotice）——按等待态显示，不得先闪原 404 文案
+    if (isNotFoundError(error)) return <div className="jenkins_empty jenkins_loading">加载中…</div>
     return <div className="jenkins_empty">加载失败：{error}</div>
   }
   if (!info) {
-    return <div className="jenkins_empty">加载工作空间…</div>
+    return <div className="jenkins_empty jenkins_loading">加载工作空间…</div>
   }
 
   const preview = async () => {

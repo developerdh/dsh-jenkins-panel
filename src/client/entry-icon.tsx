@@ -18,6 +18,7 @@ import type { SlotMap } from '@deepseek-ai/dsh-client-ui-slots'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 
 import { isJenkinsPanelOpen, openJenkinsPanel, closeJenkinsPanel } from './panel/mount.js'
+import { JENKINS_ICON_DATA_URL } from './jenkins-icon.js'
 
 const SIDEBAR_FOOTER_SLOT = 'sidebar.footer.action' as keyof SlotMap & string
 
@@ -30,8 +31,6 @@ export function entryIconClass(active: boolean): string {
 export function nextOpenState(current: boolean): boolean {
   return !current
 }
-
-const JENKINS_ICON_URL = 'https://www.jenkins.io/favicon.ico'
 
 /**
  * 入口图标：点击开关官方右侧栏。
@@ -70,7 +69,7 @@ function JenkinsEntry(props: { wide?: boolean; ctx?: ClientContext }) {
       title="Jenkins 面板"
       onClick={toggle}
     >
-      <img src={JENKINS_ICON_URL} alt="" draggable={false} width={16} height={16} className="jenkins_entryIconImg" referrerPolicy="no-referrer" />
+      <img src={JENKINS_ICON_DATA_URL} alt="" draggable={false} width={16} height={16} className="jenkins_entryIconImg" />
       {wide && <span className="jenkins_entryLabel">Jenkins面板</span>}
     </button>
   )

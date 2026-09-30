@@ -367,6 +367,8 @@ export function OverviewView({ sessionId, visible, refreshToken, onOpenBuild }: 
                   displayName: r.displayName,
                   status: r.status,
                   params: r.params,
+                  // 记录 id 带入详情：构建已被 Jenkins 过期清理时可就地删除这条失效记录
+                  recordId: r.id,
                 })
                 reload() // 打开构建详情强制刷新一次
               }}

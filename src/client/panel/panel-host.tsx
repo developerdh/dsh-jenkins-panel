@@ -14,8 +14,9 @@
  * 宽度（0.1.5 交给官方）：面板宽度（含拖拽调宽）由官方 `rightbar` 列几何承担，
  * 插件不再自绘 resize-grip、不再写宽度变量/存宽度（store 只保留当前会话 id）。
  *
- * 会话（0.1.5 实测）：`ctx.sessions.list`（ObservableSnapshot，`current` 为当前会话 id）
- * 原样保留，提供者由已消失的 dsh-client-runtime 变为 dsh-api-session-controller。
+ * 会话（0.2.0 换源）：`ctx.sidebarRight.mounted`（ObservableSnapshot，值为「屏幕上的
+ * 会话」id）是 0.2.0 官方唯一的当前会话语义出口——`sessions.list.current` 已随 retain
+ * 模型删除（见 session.ts 头注），面板据此做会话切换联动。
  *
  * 内容区（CLIENT-M2-03/04/05/06 接入，逐项保留）：tab 栏（总览/任务）+ `data-dsh-jenkins-panel-content`
  * 双视图**常驻挂载**（tab 与 detail 控制显隐——总览过滤/任务树展开状态在返回时保持）：
@@ -29,6 +30,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // 构建期被改写成「运行时注入 <style>」模块（scripts/build-client.mjs），见该 CSS 头注
 import '../jenkins.module.css'
 import { listConnections, type TreeJobNode } from '../api.js'
+import { JENKINS_ICON_DATA_URL } from '../jenkins-icon.js'
 import { panelStore } from './store.js'
 import { useSessionId } from './session.js'
 import { registerTriggerListener } from './trigger-listener.js'
@@ -39,8 +41,7 @@ import { BuildDetailView, type BuildDetailEntry } from './build-detail-view.js'
 
 /** 面板状态周期刷新间隔（用户 V7 点 1：状态更新时间需自动变化）；对齐 host registry 轮询 cadence */
 const PANEL_REFRESH_MS = 15_000
-/** Jenkins 官方 favicon（图标；与入口图标一致，用户 V7 要求） */
-const JENKINS_ICON_URL = 'https://www.jenkins.io/favicon.ico'
+/** Jenkins 官方图标（本地打包 data URL，来源与许可见 jenkins-icon.ts 头注；与入口图标一致，用户 V7 要求） */
 
 /** 内容区导航状态：任务视图 / 任务详情（M2-05）/ 构建详情（M2-06） */
 type PanelDetail =
@@ -126,7 +127,7 @@ export function JenkinsPanel({ ctx, visible, sessionId }: { ctx: ClientContext; 
     <div className="jenkins_panel" data-dsh-jenkins-panel="" role="complementary" aria-label="Jenkins 面板">
       <div className="jenkins_panelInner">
         <header className="jenkins_header">
-          <img src={JENKINS_ICON_URL} className="jenkins_logoImg" alt="" width={16} height={16} draggable={false} referrerPolicy="no-referrer" />
+          <img src={JENKINS_ICON_DATA_URL} className="jenkins_logoImg" alt="" width={16} height={16} draggable={false} />
           <span className="jenkins_title">Jenkins面板</span>
           {/* 入口在左栏底部（sidebar.footer.action）：头部不放刷新/关闭按钮，
               避免与入口冲突；状态更新时间在标题后方、圆点放到文字后方。 */}
@@ -172,6 +173,8 @@ export function JenkinsPanel({ ctx, visible, sessionId }: { ctx: ClientContext; 
               sessionId={sessionId}
               visible={visible}
               onBack={closeDetail}
+              // 失效记录就地删除后重拉总览，避免返回列表仍看到已删行
+              onRecordDeleted={() => setRefreshToken((n) => n + 1)}
             />
           )}
           {detail?.kind === 'job' && (
@@ -195,11 +198,11 @@ export function JenkinsPanel({ ctx, visible, sessionId }: { ctx: ClientContext; 
 
 /**
  * 页签正文（供 mount.ts 注册进官方 keyed 槽位 `sidebar.right.pane.tab`）：
- * 追踪当前会话（ctx.sessions.list），并从宿主注入的 `visible` 派生面板可见性。
+ * 追踪当前会话（ctx.sidebarRight.mounted），并从宿主注入的 `visible` 派生面板可见性。
  */
 export function PanelBody(props: { ctx: ClientContext; visible?: boolean }) {
   const sessionId = useSessionId(props.ctx)
-  // ctx.sessions.list 跟踪当前会话：随会话切换把面板宽度切到该会话的 key
+  // sidebarRight.mounted 跟踪当前会话：随会话切换把面板内容切到该会话的口径
   useEffect(() => {
     panelStore.setActiveSession(sessionId)
   }, [sessionId])

@@ -17,6 +17,9 @@ import {
   extractBuildParams,
   formatDuration,
   formatTime,
+  GONE_NOTICE_ACTION_LEAD,
+  goneNotice,
+  goneNoticeReason,
   opButtonsFor,
   type BuildDetailEntry,
 } from '../build-detail-view.js'
@@ -216,5 +219,30 @@ describe('buildJobLink（任务名链接：由构建 URL 派生任务页地址�
   it('returns undefined when no build URL is available', () => {
     expect(buildJobLink(undefined)).toBeUndefined()
     expect(buildJobLink('')).toBeUndefined()
+  })
+})
+
+describe('goneNotice / goneNoticeReason（记录失效：一句话覆盖改名与过期清理两种归因）', () => {
+  it('一句话同时给出两种归因（文案与探测结果无关，404 当下即可渲染）', () => {
+    const text = goneNoticeReason({ jobName: 'eap5-portal/adp', buildNumber: 236 })
+    expect(text).toContain('构建 #236')
+    expect(text).toContain('eap5-portal/adp')
+    expect(text).toContain('改名或删除')
+    expect(text).toContain('过期清理')
+    expect(text).toMatch(/。$/)
+  })
+
+  it('缺构建号（最新构建/排队中）时用「该构建」兜底，不出现 #0 / #undefined', () => {
+    expect(goneNoticeReason({ jobName: 'deploy' })).toContain('该构建')
+    expect(goneNoticeReason({ jobName: 'deploy', buildNumber: 0 })).not.toContain('#0')
+    expect(goneNoticeReason({ jobName: 'deploy', buildNumber: 0 })).not.toContain('#undefined')
+  })
+
+  it('完整兜底文案两行：第一行归因、第二行提醒（无可删记录时给文字动作）', () => {
+    const info = { jobName: 'eap5-portal/adp', buildNumber: 236 }
+    const lines = goneNotice(info).split('\n')
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toBe(goneNoticeReason(info))
+    expect(lines[1]).toBe(`${GONE_NOTICE_ACTION_LEAD}请到总览删除它。`)
   })
 })

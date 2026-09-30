@@ -1,7 +1,7 @@
 {
   "name": "dsh-jenkins-panel",
-  "version": "0.1.0-rc.1",
-  "description": "Jenkins CI/CD integration plugin for DeepSeek Harness (dsh): AI-invocable jenkins_* tools (build trigger/status/log/history/artifacts, job ops), official right-sidebar panel (triggered-build overview, multi-level job tree, build log & artifacts viewer), connection & token settings card, and automatic build-failure analysis pushed back into the triggering session.",
+  "version": "0.2.0-rc.1",
+  "description": "DeepSeek Harness (dsh) plugin for Jenkins: AI-invocable jenkins_* tools (build trigger/status/log/history/artifacts, job ops), panel on the dsh official right-sidebar (triggered-build overview, multi-level job tree, build log & artifacts viewer), connection & token settings card, and automatic build-failure analysis pushed back into the triggering session.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -29,18 +29,18 @@
     "export:public": "node scripts/export-public.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/schemastery": "^3.18.4",
     "axios": "^1.20.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-credentials": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-host-webserver": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-llm": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-session": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-tools": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-util-values": "^0.1.5-rc.1",
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-credentials": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-session": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-util-values": "^0.2.0-rc.2",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0"
   },
@@ -82,7 +82,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@deepseek-ai/cordis": "4.0.2"
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4"
     }
   }
 }

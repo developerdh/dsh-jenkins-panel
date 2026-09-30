@@ -9,7 +9,8 @@
  *   见 HOST-M1-08 变更记录：ctx.baseDir 非标准键，profile 数据目录经 DSH_HOME 计算）
  *   → ⑤ `registerJenkinsTools`（triggerRegistry 接线：build_trigger/retry 写总览记录）
  *   → ⑥ `registerJenkinsRoutes`（/jenkins/api/*：面板取数 + session.cwd 最佳努力接线）
- *   → ⑦ 设置持久化（V5 路径 1）；
+ *   → ⑦ 设置持久化（0.2.0 存储归一：Config（profile patch）为唯一事实源，settings.json
+ *   一次性收编/兜底，见 jenkins/settings.ts adoptOrMigrateSaved）；
  *   失败自动分析（analysis.enabled 默认开）：ctx.agents 回推触发会话，注册表 onBuildFailed
  *   → failure-analysis.handle → agent.followup 注入分析任务书（见 jenkins/failure-analysis.ts）。
  */
@@ -17,7 +18,14 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
-import { loadSettings, saveSettings, settingsFile, type SavedSettings } from './jenkins/settings.js'
+import {
+  adoptOrMigrateSaved,
+  archiveSettings,
+  saveSettings,
+  settingsFile,
+  writeConnectionsToConfig,
+  type ConfigEditorFace,
+} from './jenkins/settings.js'
 
 import { clientFor, createConnectionRegistry, listConnections, type JenkinsConnectionMeta } from './jenkins/connection.js'
 import { createFailureAnalysis, type AnalysisAgentLike } from './jenkins/failure-analysis.js'
@@ -123,12 +131,18 @@ export function assertConnectionNamesUnique(connections: readonly JenkinsConnect
   }
 }
 
-/** 有效连接设置：持久化文件优先（跨重启保留），无文件回退插件的 composition Config */
-function effectiveSettings(config: ConfigShape, saved: SavedSettings | null): SavedSettings {
-  return saved ?? {
-    defaultConnection: config.defaultConnection,
-    connections: config.connections,
+/** 宿主 ConfigEditor 宽松读取（dsh-base 提供；不进 inject——服务缺失时降级为 JSON 文件持久化） */
+function configEditorOf(ctx: Context): ConfigEditorFace | undefined {
+  try {
+    return (ctx as unknown as { configEditor?: ConfigEditorFace }).configEditor
+  } catch {
+    return undefined
   }
+}
+
+/** 错误信息归一（日志口径） */
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 export async function apply(ctx: Context, config: ConfigShape): Promise<void> {
@@ -136,9 +150,19 @@ export async function apply(ctx: Context, config: ConfigShape): Promise<void> {
   //   把 $DSH_HOME/dsh-jenkins/{settings,registry}.json 整体搬到 $DSH_HOME/dsh-jenkins-panel/）
   await migrateLegacyDataDir(profileDataDir())
   const file = settingsFile(profileDataDir())
-  // ① 启动加载连接设置（CLIENT-M2-07 修复：持久化文件优先，跨刷新/重启保留）
-  const saved = await loadSettings(file)
-  let currentSettings = effectiveSettings(config, saved)
+  // ① 启动设置收编（0.2.0 存储归一）：settings.json → 插件 Config（profile patch）。
+  //    configEditor 可用 → 一次性收编（edit 覆盖连接字段、保留其余手改字段）并归档文件
+  //    （写入经 Loader reconcile 会触发本插件重载，文件已归档故幂等）；不可用/失败 →
+  //    降级为 0.1.x 文件优先内存合并。之后 Config（form.state.value 同源）是唯一事实源。
+  const editor = configEditorOf(ctx)
+  const { settings: adopted } = await adoptOrMigrateSaved({
+    file,
+    config,
+    editor,
+    ownPackageName: name,
+    logger: (m) => console.log(`[dsh-jenkins-panel] ${m}`),
+  })
+  let currentSettings = adopted
   // ① 连接名双重校验：字符集（Config.pattern）+ 大小写不敏感唯一（均 fail-loud）
   assertConnectionNamesUnique(currentSettings.connections)
   // ② 连接注册表构造（M1-03）：只含端点元数据（无 token），提供 resolve/has/reload
@@ -241,7 +265,20 @@ export async function apply(ctx: Context, config: ConfigShape): Promise<void> {
         assertConnectionNamesUnique(next.connections)
         currentSettings = next
         registry.reload(next)
-        await saveSettings(file, next)
+        if (editor) {
+          // 0.2.0 存储归一：持久化目标 = 插件 Config 条目（profile patch；经 ConfigEditor
+          // 校验/持久化，普通字段会触发本插件重载重放 apply，新实例从 Config 读到 next）。
+          // 不 await：路由响应先回、重载随后发生（重载会卸载本路由，await 可能中断 HTTP 响应）；
+          // 写入失败兜底回写 JSON 文件（下次启动 adoptOrMigrateSaved 重试收编）。
+          void writeConnectionsToConfig(editor, name, next)
+            .then(() => archiveSettings(file, (m) => console.log(`[dsh-jenkins-panel] ${m}`)))
+            .catch(async (err) => {
+              console.log(`[dsh-jenkins-panel] 配置写入 profile patch 失败（${messageOf(err)}），已内存生效；回退 JSON 文件持久化`)
+              await saveSettings(file, next, (m) => console.log(`[dsh-jenkins-panel] ${m}`)).catch(() => {})
+            })
+        } else {
+          await saveSettings(file, next)
+        }
       },
     },
   })

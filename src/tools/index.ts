@@ -18,9 +18,21 @@ import { type JenkinsToolsDeps } from './shared.js'
 
 export type { JenkinsToolsDeps }
 
-/** 注册全部 jenkins_* 工具（每个注册返回 disposer，经 ctx.tools.register 可逆副作用随 fiber 卸载清理） */
+/**
+ * 注册全部 jenkins_* 工具（job 5 + build 10 + ops 9）。
+ *
+ * ⚠️ 生命周期（0.2.0 实测勘误）：`ctx.tools.register` 返回的 disposer 是工具唯一的注销
+ * 通道（同层重复注册直接失败），不能依赖「随 fiber 卸载自动清理」——插件重载/重装时
+ * 残留工具会让下次激活撞重复。故全部注册收进一个 `ctx.effect`：collect 全部 disposer、
+ * 卸载时逆序注销（与 routes.ts 的修法同款）。
+ */
 export function registerJenkinsTools(ctx: Context, deps: JenkinsToolsDeps): void {
-  for (const tool of [...defineJobTools(deps), ...defineBuildTools(deps), ...defineOpsTools(deps)]) {
-    ctx.tools.register(tool)
-  }
+  ctx.effect(() => {
+    const disposers = [...defineJobTools(deps), ...defineBuildTools(deps), ...defineOpsTools(deps)].map((tool) =>
+      ctx.tools.register(tool),
+    )
+    return () => {
+      for (const dispose of [...disposers].reverse()) dispose()
+    }
+  }, 'dsh-jenkins-panel: jenkins_* tools')
 }

@@ -444,6 +444,22 @@ body[data-ds-dark-theme] {
   transform: rotate(180deg);
 }
 
+/* 菜单底板（V11 修复：用户报障「下拉框不应透明」）
+ *
+ * 根因：曾用 `--dsw-specific-menu`（= 宿主 `--dsw-menu-surface-fill`）当唯一底色，
+ * 而该令牌是**半透明**浮层（深色 #43454a73 ≈ 45%、浅色 #f8f9fa94 ≈ 58%）；宿主的
+ * 菜单有 `backdrop-filter: var(--dsw-menu-backdrop-filter)` 配它做毛玻璃，本下拉没有，
+ * 于是面板内容/记录行直接透上来 → 观感就是「下拉框是透明的」。
+ *
+ * 修法（对齐宿主 MenuSurface 的分层口径，但不引入 backdrop 合成风险）：
+ * 1. 基底 = **不透明**层级令牌 `--dsw-alias-bg-layer-3`（深 #353638 / 浅 #fff；
+ *    不存在时回退面板自己的 `--dsh-bg-elev2`，同样不透明）——保证任何主题下都读得清；
+ * 2. 浮层 = 宿主菜单同源色 `--dsw-specific-menu` 用 `::before` 叠在基底之上（菜单内
+ *    z-index:-1 + isolation:isolate 自成层叠上下文），保留 DSH 菜单的色调与深浅主题差异，
+ *    透明度只作用在颜色上，不会透出下层内容；
+ * 3. 兜底 = `background-color` 写在没叠到浮层的环境（令牌缺失、伪元素不生效）也不透明。
+ *
+ * 回归锚点：单测 src/client/__tests__/css-menu-surface.test.ts 锁死「底色不透明 + 两道声明」。 */
 .jenkins_selectMenu {
   position: absolute;
   z-index: 30;
@@ -455,12 +471,27 @@ body[data-ds-dark-theme] {
   padding: 4px;
   margin: 0;
   list-style: none;
-  background: var(--dsw-specific-menu, var(--dsh-bg-elev2));
-  border: 1px solid var(--dsw-alias-border-inverted, var(--dsh-border-strong));
+  isolation: isolate;
+  /* 不透明基底（关键：菜单读不清的根因就在这里） */
+  background-color: var(--dsw-alias-bg-layer-3, var(--dsh-bg-elev2));
+  /* 兜底：环境不认 background-color 时也必须是同一个不透明色（不得退回半透明令牌） */
+  background: var(--dsw-alias-bg-layer-3, var(--dsh-bg-elev2));
+  border: 1px solid var(--dsw-alias-border-l2, var(--dsh-border-strong));
   border-radius: var(--dsh-radius-xl);
   box-shadow: var(--dsw-shadow-lv3, var(--dsh-shadow-pop));
   scrollbar-width: thin;
   scrollbar-color: var(--dsh-scroll-thumb) transparent;
+}
+
+/* 浮层色调：宿主菜单同源半透明色（只染底，不透内容） */
+.jenkins_selectMenu::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--dsw-specific-menu, transparent);
+  pointer-events: none;
 }
 
 .jenkins_selectOption {
@@ -637,6 +668,30 @@ body[data-ds-dark-theme] {
   font-size: 11px;
   color: var(--dsh-st-fail);
   padding: 2px 6px 2px 32px;
+}
+
+/* 构建详情 · 记录失效说明（用户要求居左；复用 .jenkins_empty 时覆盖其 text-align: center） */
+.jenkins_goneNotice {
+  text-align: left;
+}
+
+/* 等待态（用户要求：进来要能区分「加载中」与「加载失败」）：纯 CSS 旋转圈 + 文案，
+ * 与 .jenkins_empty 叠加使用（空态容器自带居中与留白，这里只补一个转圈指示） */
+.jenkins_loading::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 1.5px solid var(--dsh-border-strong);
+  border-top-color: var(--dsh-accent);
+  border-radius: 50%;
+  animation: jenkins_spin 0.8s linear infinite;
+}
+
+@keyframes jenkins_spin {
+  to { transform: rotate(360deg); }
 }
 
 /* P0-b：当前工作区未能解析时的如实提示（chip 显示「当前工作区」却列出全部工作区记录时必须吭声） */
@@ -1294,6 +1349,37 @@ body[data-ds-dark-theme] {
   flex-direction: column;
   gap: 16px;
   max-width: 760px;
+}
+
+/* 顶部区：说明独占第一行，「＋ 新增连接」入口错开到第二行右端（按钮不挤说明文本） */
+.jenkins_settingsHead {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+/* 入口行：占满整行；按钮**恒在右端**、操作提示与其同排（提示占按钮左侧余宽、随余宽换行）。
+   常规 row 顺序：提示在前 flex:1（min-width:0 允许换行）、按钮在后 flex:none；
+   justify-content: flex-end 保证**无提示时按钮同样贴右**（否则空行时按钮会落到左端，
+   点击测试冒出提示后又跳到右端）。 */
+.jenkins_settingsHead > .jenkins_toolbar {
+  margin-bottom: 0;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.jenkins_settingsHead > .jenkins_toolbar > .jenkins_opMessage {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+  text-align: right;
+}
+
+.jenkins_settingsHead > .jenkins_toolbar > .jenkins_pillBtn {
+  flex: none;
 }
 
 .jenkins_settingDesc {

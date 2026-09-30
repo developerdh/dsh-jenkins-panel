@@ -58,6 +58,20 @@ export async function callApi<T>(
   return envelope.value as T
 }
 
+/**
+ * 错误是否属于「资源不存在」类（404 口径；构建详情「记录失效」判定用）。
+ *
+ * 判据落在 host 侧统一文案本身：§5 信封只回传 `error` 字符串（不含 HTTP 状态码），
+ * 三种来源都是 404 语义——① `client.mapError` 的 404 映射（含 URL）、
+ * ② 任务名解析未命中（`未找到任务 "…"`）、③ 透传的原始错误里带 404。
+ * 刻意宽松：仅用于「把用户引向过期清理/改名并删除总览记录」的提示分支，
+ * 误判只是多一句说明，不会丢数据；真 404 漏判则退回原错误文案。
+ */
+export function isNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '')
+  return /资源未找到|未找到任务|404/.test(message)
+}
+
 /** conn.list：连接切换器数据源（默认连接排最前由调用方处理） */
 export function listConnections(opts: ApiCallOptions = {}): Promise<ConnectionInfo[]> {
   return callApi<ConnectionInfo[]>('conn.list', {}, opts)

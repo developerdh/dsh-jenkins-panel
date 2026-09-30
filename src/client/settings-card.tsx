@@ -8,17 +8,27 @@
  *   token 不在此）；Token 状态 = `ctx.remote.credentials.describe(refs)`（configured，**无值回显**）；
  * - 保存：`settings.update`（写入 JSON + registry.reload，使新增立即可用）
  *   + `ctx.remote.credentials.set/unset`（ref = `JENKINS_TOKEN_<NAME>`，V4 方案 A；0.1.5 参数扁平化）；
- *   删除连接不删除凭据；
+ * - 删除连接**同时清理该连接的凭据**（方案 A，2026-09-30 口径变更）：unset 只对可写层生效——
+ *   启动环境变量提供的 ref 报 `writable:false`（对该层 unset 会被提供方拒绝），故直接跳过并如实说明；
+ *   `.env` 兜底层对 unset 是**静默 no-op**（store 里没有该键时不写盘），故 unset 后复核 `describe`，
+ *   仍 configured 时按「需自行清理」措辞——判定与三种文案见纯函数 `credentialCleanupPlan` /
+ *   `credentialPreNote` / `credentialRemovalNote`；
  * - 测试：`conn.test` 路由（卡片行按名测；新增/编辑表单支持**未保存直连测试**——内联 url/token）；
- * - 交互：新增表单插在「＋ 新增连接」按钮**上方**（提交后成为一条记录卡片）；编辑表单**原位替换**
+ * - 交互：新增/编辑入口「＋ 新增连接」在说明文本**下一行的右端**（说明独占一行、按钮错开行右对齐，
+ *   且按钮在「有无操作提示」两种状态下位置恒定）；操作结果提示（保存/删除/连接测试等）
+ *   与该按钮**同排显示在按钮左侧**；
+ *   新增表单紧随顶部区、落在连接卡片区**首位**（提交后新连接同样置顶留存——列表顺序 = 配置数组顺序，
+ *   新增时前置插入）；编辑表单**原位替换**
  *   对应连接卡片（该记录从查看态切为修改态，保存/取消后恢复查看态）；
  * - 连接名校验与 host Schema/`assertConnectionNamesUnique` **同源规则**，key 实时预览。
  *
- * 纯函数（validateConnectionName / validateSettingsForm / connectionKeyPreview）导出供单测。
+ * 纯函数（validateConnectionName / validateSettingsForm / connectionKeyPreview /
+ * credentialCleanupPlan / credentialSourceLabel / credentialPreNote / credentialRemovalNote）导出供单测。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SlotMap } from '@deepseek-ai/dsh-client-ui-slots'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { ConfigPageFormLike } from './types/dsh-0.2.0.js'
 
 import {
   credentialRefOf,
@@ -64,6 +74,65 @@ export function connectionKeyPreview(name: string): string {
   return credentialRefOf(sanitizeConnectionName(name.trim()) || '—')
 }
 
+/**
+ * 删除连接时对凭据的处置判定（纯函数）：`unset` 仅对**可写层**有意义。
+ *
+ * - `configured:false` → 无凭据可清，不调用 unset（provider 对不存在 ref 的 unset 本身即 no-op）；
+ * - `writable:false`（启动环境变量提供的 ref）→ **不能** unset：provider 会以
+ *   「supplied read-only by the launching environment」拒绝（read-only 层遮蔽写入），
+ *   调用只会把删除流程带崩，故跳过并如实说明；
+ * - 其余（插件存储 / `.env` 兜底，provider 均报 `writable:true`）→ 尝试 unset 后复核。
+ */
+export function credentialCleanupPlan(before: CredentialInfo | undefined): 'none' | 'unset' {
+  return before?.configured === true && before.writable !== false ? 'unset' : 'none'
+}
+
+/** 凭据来源层的中文名（provider 词表：`env` / `file` / `project-env` / `user-env`） */
+export function credentialSourceLabel(source: string | undefined): string {
+  switch (source) {
+    case 'env':
+      return '启动环境变量'
+    case 'project-env':
+      return '项目 .env'
+    case 'user-env':
+      return '$DSH_HOME/.env'
+    default:
+      return '凭据存储'
+  }
+}
+
+/** 不执行 unset 时的理由文案（纯函数）；`''` = 可写层，交由 {@link credentialRemovalNote} 复核后措辞 */
+export function credentialPreNote(ref: string, before: CredentialInfo | undefined): string {
+  if (before === undefined) return `凭据 ${ref} 状态未知，未清理`
+  if (before.configured !== true) return `凭据 ${ref} 本未设置`
+  if (before.writable !== false) return ''
+  return `凭据 ${ref} 由${credentialSourceLabel(before.source)}提供，插件无法删除，请自行清理`
+}
+
+/**
+ * unset **之后**的复核文案（纯函数）：provider 对「store 里不存在该 ref」的 unset 是静默 no-op，
+ * 因此「已提交 unset」不等于「已删除」——只有复核仍为未配置才算真删；仍 configured 说明该 ref
+ * 由插件不可写层（启动环境变量 / `.env`）提供，必须说成实话。`''` = 已确实清除。
+ */
+export function credentialRemovalNote(ref: string, after: CredentialInfo | undefined): string {
+  if (after === undefined) return `凭据 ${ref} 已提交清理，但状态未能复核`
+  if (after.configured !== true) return ''
+  return `凭据 ${ref} 仍由${credentialSourceLabel(after.source)}提供，插件无法删除，请自行清理`
+}
+
+/** 单 ref 状态查询（0.1.5 扁平参数 + RemoteResult 判别）；拿不到答案 → `undefined`（视为未知，不动凭据） */
+async function describeCredential(
+  api: RemoteFace['credentials'],
+  ref: string,
+): Promise<CredentialInfo | undefined> {
+  try {
+    const res = await api.describe([ref])
+    return res?.ok ? res.value?.[ref] : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export interface ConnectionFormInput {
   name: string
   url: string
@@ -94,6 +163,74 @@ export function validateSettingsForm(
   }
 }
 
+/* ── 插件页配置通路（0.2.0 plugins.* 槽位；Config section 值的纯函数助手，双入口共用） ── */
+
+/** 连接设置形状（Config section 的连接子集；与 SavedSettings/JenkinsSettings 同形） */
+interface SectionSettings {
+  defaultConnection: string
+  connections: ConnRow[]
+}
+
+/** 从 Config section 值提取连接设置（容错：字段缺失/形状不符逐项回默认；token 不在 Config） */
+export function settingsOfSection(section: Record<string, unknown> | undefined): SectionSettings {
+  const value = section ?? {}
+  const rawConns = Array.isArray(value.connections) ? value.connections : []
+  const connections: ConnRow[] = []
+  for (const raw of rawConns) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const c = raw as Record<string, unknown>
+    if (typeof c.name !== 'string' || c.name === '' || typeof c.url !== 'string' || c.url === '') continue
+    connections.push({
+      name: c.name,
+      url: c.url,
+      username: typeof c.username === 'string' ? c.username : undefined,
+      timeout: typeof c.timeout === 'number' && Number.isFinite(c.timeout) ? c.timeout : 30_000,
+    })
+  }
+  return {
+    defaultConnection: typeof value.defaultConnection === 'string' ? value.defaultConnection : '',
+    connections,
+  }
+}
+
+/** 读 Config section 的 analysis.enabled（缺省 true，与 host Schema 默认一致） */
+export function analysisEnabledOf(section: Record<string, unknown> | undefined): boolean {
+  const analysis = section?.analysis
+  if (typeof analysis !== 'object' || analysis === null) return true
+  const enabled = (analysis as Record<string, unknown>).enabled
+  return typeof enabled === 'boolean' ? enabled : true
+}
+
+/**
+ * 构建「整段根 set」op：以宿主给出的当前 section 值为底（保留 panel/registry/analysis
+ * 等未在本表单编辑的字段），覆盖连接设置与 analysis.enabled。空 path = section 根，
+ * 单 op 原子提交，修订围栏由宿主 mutate 承担。
+ */
+export function sectionSetOp(
+  section: Record<string, unknown> | undefined,
+  next: SectionSettings & { analysisEnabled: boolean },
+): { op: 'set'; path: string[]; value: Record<string, unknown> } {
+  const base = section ?? {}
+  return {
+    op: 'set',
+    path: [],
+    value: {
+      ...base,
+      defaultConnection: next.defaultConnection,
+      connections: next.connections,
+      analysis: { ...(typeof base.analysis === 'object' && base.analysis !== null ? base.analysis : {}), enabled: next.analysisEnabled },
+    },
+  }
+}
+
+/** 插件页摘要一行（view: 'summary' 用）；section 未知（form 缺席）时给中性能力描述，不臆断连接数 */
+export function summaryTextOf(section: Record<string, unknown> | undefined): string {
+  if (section === undefined) return '管理 Jenkins 连接、默认连接与失败自动分析'
+  const s = settingsOfSection(section)
+  const connPart = s.connections.length === 0 ? '尚未配置连接' : `${s.connections.length} 个连接（默认 ${s.defaultConnection || '未设'}）`
+  return `Jenkins 连接 · ${connPart} · 失败自动分析${analysisEnabledOf(section) ? '开' : '关'}`
+}
+
 export interface SettingsCardProps {
   /** framework 注入（settings.section 分区标准 props；宽松声明） */
   sessionId?: string
@@ -102,6 +239,12 @@ export interface SettingsCardProps {
    * 0.1.5 改造：来源由 `ctx.connection.api`（已移除）改为 `ctx.remote.credentials`。
    */
   api?: RemoteFace['credentials'] | null
+  /**
+   * 0.2.0 插件页通路（plugins.bundle.config / plugins.row.config 的宿主表单）：
+   * 提供时数据源 = 宿主 Config 快照、保存 = 整段根 set（mutate，含修订围栏）；
+   * 缺省 = 0.1.x 通路（settings.get/update 自建路由 + JSON 兜底文件）。
+   */
+  configForm?: ConfigPageFormLike
 }
 
 interface ConnRow {
@@ -111,9 +254,10 @@ interface ConnRow {
   timeout: number
 }
 
-export function SettingsCard({ api }: SettingsCardProps) {
+export function SettingsCard({ api, configForm }: SettingsCardProps) {
   const [conns, setConns] = useState<ConnRow[]>([])
   const [defaultConn, setDefaultConn] = useState('')
+  const [analysisEnabled, setAnalysisEnabled] = useState(true)
   const [tokenStatus, setTokenStatus] = useState<Record<string, boolean>>({})
   const [editing, setEditing] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -123,6 +267,10 @@ export function SettingsCard({ api }: SettingsCardProps) {
   const [form, setForm] = useState({ name: '', url: '', username: '', timeout: '30000', token: '', clearToken: false })
   const [formError, setFormError] = useState<string | null>(null)
   const [formTest, setFormTest] = useState<string | null>(null)
+  // 插件页通路：宿主给出的 Config section 原值（根 set 时保留 panel/registry 等未编辑字段）
+  const sectionRef = useRef<Record<string, unknown> | undefined>(undefined)
+  // 宿主文档是否接受写入（memory 模式 false → 保存禁用）
+  const writable = configForm ? configForm.state.writable !== false : true
 
   const load = async () => {
     try {
@@ -155,8 +303,51 @@ export function SettingsCard({ api }: SettingsCardProps) {
   }
 
   useEffect(() => {
+    // 插件页通路：数据源 = 宿主 Config 快照（settings.get 路由不参与）
+    if (configForm) {
+      const sync = () => {
+        const snap = configForm.state
+        sectionRef.current = snap.value
+        if (snap.status === 'ready' && snap.value) {
+          const s = settingsOfSection(snap.value)
+          setConns(s.connections)
+          setDefaultConn(s.defaultConnection)
+          setAnalysisEnabled(analysisEnabledOf(snap.value))
+        }
+      }
+      sync()
+      return
+    }
     void load()
-  }, [api])
+  }, [api, configForm])
+
+  /** 统一持久化通路：插件页 = 宿主 mutate（整段根 set）；设置页 = settings.update 路由。
+   *  analysis 显式传参（toggle 场景 state 更新异步，闭包读旧值）。 */
+  const persistSettings = async (next: SectionSettings, analysis: boolean = analysisEnabled): Promise<void> => {
+    if (!writable) throw new Error('当前环境不可写配置（宿主未开放该命名空间）')
+    if (configForm) {
+      const ok = await configForm.mutate([sectionSetOp(sectionRef.current, { ...next, analysisEnabled: analysis })])
+      if (!ok) throw new Error('宿主拒绝了配置写入（可能已被他人修改，请重试）')
+      return
+    }
+    await updateSettings({ defaultConnection: next.defaultConnection, connections: next.connections })
+  }
+
+  /** 失败自动分析开关（仅插件页通路可持久化；设置页卡片不渲染该开关） */
+  const toggleAnalysis = async () => {
+    const next = !analysisEnabled
+    setBusy(true)
+    setOpMessage(null)
+    try {
+      await persistSettings({ defaultConnection: defaultConn, connections: conns }, next)
+      setAnalysisEnabled(next)
+      setOpMessage(`失败自动分析已${next ? '开启' : '关闭'}`)
+    } catch (err) {
+      setOpMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const openForm = (name: string | null) => {
     setEditing(name)
@@ -202,11 +393,13 @@ export function SettingsCard({ api }: SettingsCardProps) {
     setFormError(null)
     try {
       const value = result.value
+      // 列表顺序 = 配置数组顺序（top-down 即「先显先存」）；新增置顶（列表首位 = 表单出现的位置），
+      // 编辑保持原位，故这里只对新连接做前置插入（默认连接不受列表顺序影响，仍按 defaultConnection 判定）。
       const nextConns = editing
         ? conns.map((c) => (c.name === editing ? { ...value, name: value.name } : c))
-        : [...conns, value]
+        : [value, ...conns]
       const nextDefault = editing === defaultConn ? value.name : defaultConn
-      await updateSettings({ defaultConnection: nextDefault, connections: nextConns })
+      await persistSettings({ defaultConnection: nextDefault, connections: nextConns })
       // Token 写入（V4 方案 A）：新增必填；编辑留空=保持不变；清除=unset
       if (api) {
         const ref = credentialRefOf(value.name)
@@ -232,7 +425,7 @@ export function SettingsCard({ api }: SettingsCardProps) {
     setBusy(true)
     setOpMessage(null)
     try {
-      await updateSettings({ defaultConnection: name, connections: conns })
+      await persistSettings({ defaultConnection: name, connections: conns })
       setDefaultConn(name)
       setOpMessage(`已将 ${name} 设为默认连接`)
     } catch (err) {
@@ -244,17 +437,33 @@ export function SettingsCard({ api }: SettingsCardProps) {
 
   const remove = async (name: string) => {
     if (!api) return
-    if (!window.confirm(`删除连接 ${name}？（凭据 ${credentialRefOf(name)} 不会被删除，可另行清理）`)) return
+    const ref = credentialRefOf(name)
+    if (!window.confirm(`删除连接 ${name}？（将同时清理插件保存的凭据 ${ref}；来自环境变量/.env 的 Token 无法删除，需自行清理）`)) return
     setBusy(true)
     setOpMessage(null)
     try {
+      // 顺序固定：先删元数据（连接消失是本次操作的主体），再清理凭据。
       const nextConns = conns.filter((c) => c.name !== name)
-      await updateSettings({
+      await persistSettings({
         defaultConnection: defaultConn === name ? '' : defaultConn,
         connections: nextConns,
       })
       if (editing === name) setEditing(null)
-      setOpMessage(`已删除连接 ${name}（凭据未删除）`)
+      // 凭据清理（方案 A）：describe 判定可写性 → unset → 复核。两次写入非原子，且凭据环节的
+      // 任何失败都不回滚已完成的删除，只在结果文案里如实报告。
+      let note = ''
+      try {
+        const before = await describeCredential(api, ref)
+        if (credentialCleanupPlan(before) === 'unset') {
+          unwrapRemote(await api.unset(ref), `清除凭据 ${ref} 失败`)
+          note = credentialRemovalNote(ref, await describeCredential(api, ref))
+        } else {
+          note = credentialPreNote(ref, before)
+        }
+      } catch (err) {
+        note = `凭据 ${ref} 清理失败：${err instanceof Error ? err.message : String(err)}`
+      }
+      setOpMessage(note ? `已删除连接 ${name}（${note}）` : `已删除连接 ${name}（凭据已一并清理）`)
       await load()
     } catch (err) {
       setOpMessage(err instanceof Error ? err.message : String(err))
@@ -308,7 +517,7 @@ export function SettingsCard({ api }: SettingsCardProps) {
     }
   }
 
-  /** 连接表单（新增/编辑共用）。新增：渲染在「＋ 新增连接」按钮上方；
+  /** 连接表单（新增/编辑共用）。新增：紧随顶部区，占连接卡片区首位（保存后同样置顶）；
    *  编辑：原位替换对应连接卡片（该记录查看态 ↔ 修改态互切）。 */
   const renderForm = (isEdit: boolean) => (
     <div className={`jenkins_formPanel${isEdit ? ' jenkins_formPanelEdit' : ''}`} data-dsh-jenkins-panel-conn-form="">
@@ -346,7 +555,7 @@ export function SettingsCard({ api }: SettingsCardProps) {
         </div>
       )}
       <div className="jenkins_formOps">
-        <button type="button" className="jenkins_pillBtn jenkins_pillBtnPrimary" onClick={save} disabled={busy}>{busy ? '保存中…' : '保存'}</button>
+        <button type="button" className="jenkins_pillBtn jenkins_pillBtnPrimary" onClick={save} disabled={busy || !writable}>{busy ? '保存中…' : '保存'}</button>
         <button type="button" className="jenkins_pillBtn" onClick={closeForm} disabled={busy}>取消</button>
         <button type="button" className="jenkins_pillBtn" onClick={runFormTest} disabled={busy}>测试连接</button>
         {formTest && <span className="jenkins_opMessage" style={{ marginTop: 0 }}>{formTest}</span>}
@@ -365,7 +574,39 @@ export function SettingsCard({ api }: SettingsCardProps) {
 
   return (
     <div className="jenkins_settingsCard" data-dsh-jenkins-panel-settings="">
-      <div className="jenkins_settingDesc">连接元数据（名称/URL/用户名/超时）走插件配置（settings）；每连接 API Token 存 dsh 凭据服务（credential-ref），明文不落配置、不回显。</div>
+      {/* 顶部区：第一行说明独占、第二行「操作提示 + ＋ 新增连接」同排（提示靠左、按钮靠右；
+          新增/编辑表单随其后落在卡片区首位） */}
+      <div className="jenkins_settingsHead">
+        <div className="jenkins_settingDesc">连接元数据（名称/URL/用户名/超时）走插件配置（settings）；每连接 API Token 存 dsh 凭据服务（credential-ref），明文不落配置、不回显。</div>
+        <div className="jenkins_toolbar">
+          {opMessage && <span className="jenkins_opMessage" style={{ marginTop: 0 }}>{opMessage}</span>}
+          <button type="button" className="jenkins_pillBtn jenkins_pillBtnPrimary" onClick={() => openForm(null)} disabled={busy}>＋ 新增连接</button>
+        </div>
+      </div>
+      {/* 新增态：表单紧随顶部区，落在连接卡片区首位；提交后新连接也置顶（见 save 的 conns 前置插入） */}
+      {formOpen && editing === null && renderForm(false)}
+
+      {configForm && (
+        <div className="jenkins_connCard" data-dsh-jenkins-panel-analysis-toggle="">
+          <div className="jenkins_connCardTop">
+            <span className="jenkins_connCardName">失败自动分析</span>
+            <span className={analysisEnabled ? 'jenkins_testResult jenkins_testOk' : 'jenkins_testResult jenkins_testFail'}>
+              <span className="jenkins_testDot" />
+              {analysisEnabled ? '已开启' : '已关闭'}
+            </span>
+          </div>
+          <div className="jenkins_connCardKv">
+            <span className="jenkins_kvKey">说明</span>
+            <span className="jenkins_connCardV">对话触发的构建失败（FAILURE）后，自动向触发会话回推只读分析任务书（可随时关闭）</span>
+          </div>
+          <div className="jenkins_ops">
+            <button type="button" className="jenkins_pillBtn" onClick={toggleAnalysis} disabled={busy || !writable}>
+              {analysisEnabled ? '关闭' : '开启'}
+            </button>
+            {!writable && <span className="jenkins_opMessage" style={{ marginTop: 0 }}>当前环境不可写配置</span>}
+          </div>
+        </div>
+      )}
 
       {conns.map((c) => {
         const ref = credentialRefOf(c.name)
@@ -393,23 +634,16 @@ export function SettingsCard({ api }: SettingsCardProps) {
               <button type="button" className="jenkins_pillBtn" onClick={() => runCardTest(c.name)} disabled={busy}>测试</button>
               <button type="button" className="jenkins_pillBtn" onClick={() => openForm(c.name)} disabled={busy}>编辑</button>
               {c.name !== defaultConn && (
-                <button type="button" className="jenkins_pillBtn" onClick={() => setDefault(c.name)} disabled={busy}>设为默认</button>
+                <button type="button" className="jenkins_pillBtn" onClick={() => setDefault(c.name)} disabled={busy || !writable}>设为默认</button>
               )}
-              <button type="button" className="jenkins_pillBtn jenkins_pillBtnDanger" onClick={() => remove(c.name)} disabled={busy}>删除</button>
+              <button type="button" className="jenkins_pillBtn jenkins_pillBtnDanger" onClick={() => remove(c.name)} disabled={busy || !writable}>删除</button>
             </div>
           </div>
         )
       })}
 
-      {/* 新增态：表单插在「＋ 新增连接」按钮上方（提交后保存为一条记录卡片） */}
-      {formOpen && editing === null && renderForm(false)}
-
-      <div className="jenkins_toolbar" style={{ marginTop: 12 }}>
-        <button type="button" className="jenkins_pillBtn jenkins_pillBtnPrimary" onClick={() => openForm(null)} disabled={busy}>＋ 新增连接</button>
-        {opMessage && <span className="jenkins_opMessage" style={{ marginTop: 0 }}>{opMessage}</span>}
-      </div>
       {loadError && <div className="jenkins_tnodeError">{loadError}</div>}
-      <div className="jenkins_note">删除连接不会删除凭据，可另行清理；Token 永不回显明文。</div>
+      <div className="jenkins_note">删除连接会一并清理插件保存的凭据；来自环境变量/.env 的 Token 不在插件可写层，需自行清理。Token 永不回显明文。</div>
     </div>
   )
 }

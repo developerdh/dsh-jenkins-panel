@@ -6,9 +6,9 @@
  *   （handleFileDownload 契约，Content-Disposition: attachment；URL 由 api.artifactDownloadUrl 生成）；
  * - 排队中（queued）→ empty 态。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
-import { artifactDownloadUrl, fetchBuildArtifacts, type Artifact } from '../api.js'
+import { artifactDownloadUrl, fetchBuildArtifacts, isNotFoundError, type Artifact } from '../api.js'
 
 export interface ArtifactsViewProps {
   connection: string
@@ -16,9 +16,14 @@ export interface ArtifactsViewProps {
   buildNumber?: number
   queued: boolean
   sessionId?: string
+  /**
+   * 取数失败时的替换错误信息（构建详情在「记录失效」时下传归因说明 + 删除链接）；
+   * 缺省按原样展示 `加载失败：<error>`。
+   */
+  errorNotice?: ReactNode
 }
 
-export function ArtifactsView({ connection, jobName, buildNumber, queued, sessionId }: ArtifactsViewProps) {
+export function ArtifactsView({ connection, jobName, buildNumber, queued, sessionId, errorNotice }: ArtifactsViewProps) {
   const [artifacts, setArtifacts] = useState<Artifact[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -42,11 +47,15 @@ export function ArtifactsView({ connection, jobName, buildNumber, queued, sessio
   if (queued) {
     return <div className="jenkins_empty">构建未开始，暂无产物</div>
   }
+  // 记录失效（上层判定）：本视图的取数必然同样 404，直接展示上层给的归因说明（含删除链接）
+  if (errorNotice) return <div className="jenkins_empty">{errorNotice}</div>
   if (error) {
+    // 404 语义：等上层的「记录失效」判定（errorNotice）——按等待态显示，不得先闪原 404 文案
+    if (isNotFoundError(error)) return <div className="jenkins_empty jenkins_loading">加载中…</div>
     return <div className="jenkins_empty">加载失败：{error}</div>
   }
   if (!artifacts) {
-    return <div className="jenkins_empty">加载产物…</div>
+    return <div className="jenkins_empty jenkins_loading">加载产物…</div>
   }
   if (artifacts.length === 0) {
     return <div className="jenkins_empty">该构建无产物</div>

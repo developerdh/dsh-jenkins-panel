@@ -1,7 +1,8 @@
 /**
  * 失败自动分析推送器单测（会话回推）
  *
- * 覆盖：任务书内容要素（job/build/tail/只读约束）、notice source 形态（plugin + form），
+ * 覆盖：任务书内容要素（job/build/tail/只读约束）、notice source 形态
+ * （jenkins-panel 私有 kind + notice form，0.2.0 起共享 plugin kind 已移除），
  * 推送后 markAnalysisPushed、analysis 状态持久防重、会话不在线跳过（保持 not_analyzed）、
  * getAgent/followup 异常容错（不外溢、可重试）。
  * registry 以最小结构面桩替代（只用到 markAnalysisPushed）。
@@ -48,7 +49,8 @@ describe('createFailureAnalysis（推送守卫与降级）', () => {
     const message = followup.mock.calls[0][0] as { id: unknown; role: string; source: Record<string, unknown>; content: Array<{ type: string; text: string }> }
     expect(message.role).toBe('user')
     expect(typeof message.id).toBe('string')
-    expect(message.source).toMatchObject({ kind: 'plugin', plugin: 'dsh-jenkins-panel', form: 'notice' })
+    expect(message.source).toMatchObject({ kind: 'jenkins-panel', form: 'notice' })
+    expect(typeof (message.source as Record<string, unknown>).summary).toBe('string')
     const text = message.content[0].text
     expect(text).toContain('「deploy」')
     expect(text).toContain('deploy #3')

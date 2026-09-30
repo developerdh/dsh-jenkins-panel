@@ -18,7 +18,19 @@
  * - 只推本进程观察到的流转：重启加载到的历史 fail 终态不会到达此处（onBuildFailed 语义）。
  * - 分析任务书显式只读（禁 trigger/retry/cancel/delete），防止分析轮反过来触发构建成环。
  */
-import { createUserMessage, type ContentBlock, type MessageSourceMap, type UserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type ContentBlock, type ContextFormed, type MessageSourceMap, type UserMessage } from '@deepseek-ai/dsh-llm'
+
+/**
+ * 0.2.0 起 `MessageSourceMap` 不再提供共享的 `plugin` kind（官方注释：there is no
+ * shared catch-all `plugin` kind）——每个生产者在自己的模块里以 augmentation 声明
+ * 私有 kind（dsh-agent 的 'model-selection'、dsh-tools 的 'tool-registry' 同款形态：
+ * `{ kind: '<name>' } & ContextFormed`）。本插件的私有 kind 即 'jenkins-panel'。
+ */
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'jenkins-panel': { kind: 'jenkins-panel' } & ContextFormed
+  }
+}
 
 import type { TriggerRecord, TriggerRegistry } from './registry.js'
 
@@ -32,8 +44,6 @@ export interface FailureAnalysisOptions {
   getAgent: (sessionId: string) => AnalysisAgentLike | undefined
   /** 初始拉取日志的行数提示（jenkins_build_log 的 tail 参数，来自 Config.analysis.tailLines） */
   tailLines: number
-  /** 分析消息的 plugin source 标识（缺省 'dsh-jenkins-panel'） */
-  pluginName?: string
   /** 日志（默认带 [dsh-jenkins-panel] 前缀输出） */
   logger?: (message: string) => void
 }
@@ -82,9 +92,8 @@ export function createFailureAnalysis(registry: TriggerRegistry, options: Failur
       }
       // notice summary ≤ CONTEXT_SUMMARY_MAX_CHARS(120)：折叠行里的一句话 accounted
       const summary = `Jenkins 构建 ${record.displayName} 失败，自动分析失败原因`
-      const source: MessageSourceMap['plugin'] = {
-        kind: 'plugin',
-        plugin: options.pluginName ?? 'dsh-jenkins-panel',
+      const source: MessageSourceMap['jenkins-panel'] = {
+        kind: 'jenkins-panel',
         form: 'notice',
         summary,
       }

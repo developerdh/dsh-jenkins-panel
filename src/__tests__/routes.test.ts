@@ -96,7 +96,12 @@ function createBed(overrides?: Partial<JenkinsRoutesDeps>): Bed {
     delete: vi.fn(async () => 1),
   }
   const listConnections = vi.fn(async () => [{ name: 'prod', isDefault: true, hasToken: true }])
-  const ctx = { webServer: { register: vi.fn() } } as unknown as Context
+  const ctx = {
+    webServer: { register: vi.fn() },
+    // registerJenkinsRoutes 经 ctx.effect 挂注册（0.2.0 生命周期修复：disposer 交 effect）；
+    // 测试床立即执行回调，注册仍落在 webServer.register 的 mock 上
+    effect: (fn: () => unknown) => fn(),
+  } as unknown as Context
   const deps: JenkinsRoutesDeps = {
     registry: createConnectionRegistry({
       defaultConnection: 'prod',

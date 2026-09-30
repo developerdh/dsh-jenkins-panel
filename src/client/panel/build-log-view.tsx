@@ -13,9 +13,9 @@
  *
  * 日志请求契约 `logQueryFor` 为纯函数，可单测（tail 必带 tail；page 必带 start+limit）。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { fetchBuildLog, fetchProgressiveLog, type LogOutput } from '../api.js'
+import { fetchBuildLog, fetchProgressiveLog, isNotFoundError, type LogOutput } from '../api.js'
 
 /** 尾部分页页大小（M2-06 验收：tail 默认尾部 200 行） */
 export const LOG_PAGE_SIZE = 200
@@ -58,6 +58,11 @@ export interface BuildLogViewProps {
   visible: boolean
   /** 构建 URL（build.status 的 url，如 …/job/…/1061/；缺省则「完整日志」链接不显示） */
   buildUrl?: string
+  /**
+   * 取数失败时的替换错误信息（构建详情在「记录失效」时下传归因说明 + 删除链接）；
+   * 缺省按原样展示 `加载失败：<error>`。
+   */
+  errorNotice?: ReactNode
 }
 
 /** [ERROR]/error 行 → 失败高亮（纯函数，可单测） */
@@ -65,7 +70,7 @@ export function isErrorLine(line: string): boolean {
   return /\[ERROR\]|error/i.test(line)
 }
 
-export function BuildLogView({ connection, jobName, buildNumber, queued, sessionId, visible, buildUrl }: BuildLogViewProps) {
+export function BuildLogView({ connection, jobName, buildNumber, queued, sessionId, visible, buildUrl, errorNotice }: BuildLogViewProps) {
   const [output, setOutput] = useState<LogOutput | null>(null)
   const [view, setView] = useState<LogViewMode>({ kind: 'tail' })
   const [reload, setReload] = useState(0)
@@ -220,9 +225,19 @@ export function BuildLogView({ connection, jobName, buildNumber, queued, session
     )
   }
 
+  // 记录失效（上层判定）：本视图的取数必然同样 404，直接展示上层给的归因说明（含删除链接），
+  // 不等自己的请求失败——否则中间会空一段
+  if (errorNotice) return <div className="jenkins_empty">{errorNotice}</div>
+
   if (error && !output) {
+    // 404 语义：等上层的「记录失效」判定（errorNotice）——按等待态显示，不得先闪原 404 文案
+    if (isNotFoundError(error)) return <div className="jenkins_empty jenkins_loading">加载中…</div>
     return <div className="jenkins_empty">加载失败：{error}</div>
   }
+
+  // 首拉未回：明确的等待态（用户要求：进来要能区分「加载中」与「加载失败」；
+  // 此前会直接渲染空日志框 + 「构建进行中」提示，看着像已加载完）
+  if (!output) return <div className="jenkins_empty jenkins_loading">加载日志…</div>
 
   return (
     <div className="jenkins_logView">

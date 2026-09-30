@@ -19,7 +19,7 @@
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 
-import type { SidebarRightTabInfoFace } from '../types/dsh-0.1.5.js'
+import type { SidebarRightTabInfoFace } from '../types/dsh-0.2.0.js'
 import { PanelBody } from './panel-host.js'
 
 /** 页签类型 id（实现身份，= 正文注册的 key）；用包名，天然全局唯一 */
@@ -29,7 +29,7 @@ export const TAB_KIND = 'dsh-jenkins-panel'
 
 /**
  * 官方右侧栏服务读取（未提供 → undefined）。
- * 类型来自 `src/client/types/dsh-0.1.5.d.ts` 的本地声明；运行时读**可选**（ctx 代理对
+ * 类型来自 `src/client/types/dsh-0.2.0.d.ts` 的本地声明；运行时读**可选**（ctx 代理对
  * 未 provide 的服务读取返回 undefined，故这里不依赖 inject 守卫顺序，容错读一遍）。
  */
 function sidebarRightOf(ctx: ClientContext): ClientContext['sidebarRight'] | undefined {

@@ -1,8 +1,8 @@
 # dsh-jenkins-panel
 
-Jenkins CI/CD integration plugin for [DeepSeek Harness](https://www.deepseek.com) (dsh)：让 dsh 里的 AI 直接触发、跟踪、排查 Jenkins 构建，并提供一个官方右侧栏可视化面板。
+面向 Jenkins 的 [DeepSeek Harness](https://www.deepseek.com) (dsh) 插件：让 dsh 里的 AI 直接触发、跟踪、排查 Jenkins 构建，并提供一个 dsh 官方右侧栏可视化面板。
 
-> Jenkins CI/CD integration plugin for DeepSeek Harness (dsh): AI-invocable `jenkins_*` tools, an official right-sidebar panel, connection & token settings card, and automatic build-failure analysis pushed back into the triggering session.
+> DeepSeek Harness (dsh) plugin for Jenkins: AI-invocable `jenkins_*` tools, a panel on the dsh official right-sidebar, connection & token settings card, and automatic build-failure analysis pushed back into the triggering session.
 
 ## 功能
 
@@ -10,10 +10,11 @@ Jenkins CI/CD integration plugin for [DeepSeek Harness](https://www.deepseek.com
 - **右侧栏面板（client 半）**：接入 dsh 官方右侧栏，含总览（对话触发的构建记录 + 状态过滤实时刷新）、任务（多连接切换 + 多层级折叠树 + 搜索）、构建详情（日志 tail/分段/自动跟随、产物下载、工作空间清理）。
 - **失败自动分析**：对话触发的构建失败（FAILURE）后，自动向触发会话回推一条分析任务书，由会话内 AI 只读排查日志并输出结构化失败总结（结论 / 关键报错 / 可能原因 / 修复建议）。可在配置中关闭。
 - **连接与凭据**：多 Jenkins 连接管理走 dsh 官方设置页分区；每连接 Token 存 dsh 凭据服务（credential-ref），明文不落配置。
+- **插件页配置（dsh 0.2.0+）**：在 dsh 插件管理页可直接查看并配置本插件（`plugins.bundle.config` / `plugins.row.config` 槽位）——连接管理、默认连接、失败自动分析开关，与设置页卡片同源同款；配置持久化到 profile patch（经宿主 ConfigEditor 校验/持久化）。
 
 ## 安装
 
-前置：dsh 0.1.5+（web profile）。
+前置：dsh 0.2.0-rc.2+（web profile）。适配 dsh 0.2.0-rc.2（`next` dist-tag）；peer 范围 `^0.2.0-rc.2`，**不再兼容 0.1.x**。安装/升级时请显式指定版本（`@0.2.0-rc.2` 或 `@next`），勿依赖 `latest` 标签（当前异常，停在 0.0.1-rc.1）。
 
 ```sh
 # npm 发布版（推荐，构建产物随包分发）
@@ -53,6 +54,12 @@ pnpm typecheck  # tsc 双 tsconfig
 ```
 
 挂载调试：`cordis.patch.yml` 向 profile 组合插入本插件（`dsh web --patch ./cordis.patch.yml`）。
+
+## 商标与归属
+
+- **Jenkins®** 是 [LF Charities, Inc.](https://www.linuxfoundation.org/)（Linux Foundation 关联非营利机构）的注册商标。
+- 本插件为独立的第三方工具，与 Jenkins 官方项目及 LF Charities 无隶属或背书关系；名称与图标仅用于指示对 Jenkins 的兼容与集成。
+- 插件内使用的 Jenkins 图标取自 [jenkins.io](https://www.jenkins.io/) 官方资产，依据 [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) 许可分发，署名 Jenkins 项目（来源：https://jenkins.io/ ）。
 
 ## License
 

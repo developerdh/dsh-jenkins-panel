@@ -30,6 +30,7 @@ import {
   fetchJobParams,
   fetchProgressiveLog,
   fetchTriggeredList,
+  isNotFoundError,
   listConnections,
   retryBuild,
   searchJobs,
@@ -80,6 +81,21 @@ describe('callApi（统一信封，§5）', () => {
     await callApi('folder.tree', { folder: '' }, { sessionId: 's1', connection: 'prod' })
     const call = lastFetch()
     expect(call.body).toEqual({ sessionId: 's1', connection: 'prod', folder: '' })
+  })
+})
+
+describe('isNotFoundError（404 语义判定：构建详情「记录失效」分支的判据）', () => {
+  it('host 侧 404 映射文案 / 任务名解析未命中 / 原始 404 都算', () => {
+    expect(isNotFoundError(new Error('资源未找到（含 URL）——任务名可能是路径，尝试验证'))).toBe(true)
+    expect(isNotFoundError(new Error('未找到任务 "eap5-portal/adp"，请核对名称或完整路径'))).toBe(true)
+    expect(isNotFoundError(new Error('Request failed with status code 404'))).toBe(true)
+  })
+
+  it('连接类/权限类/服务端错误不算（不能把瞬时故障说成记录失效）', () => {
+    expect(isNotFoundError(new Error('无法连接：检查 URL/网络/防火墙'))).toBe(false)
+    expect(isNotFoundError(new Error('Jenkins 服务器内部错误，稍后重试'))).toBe(false)
+    expect(isNotFoundError(new Error('认证失败：检查该连接 API Token；提示去设置卡片测试'))).toBe(false)
+    expect(isNotFoundError(undefined)).toBe(false)
   })
 })
 

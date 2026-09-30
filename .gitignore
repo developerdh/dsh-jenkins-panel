@@ -28,3 +28,4 @@ Thumbs.db
 
 # Build/pack artifacts
 *.tgz
+/tmp-asar

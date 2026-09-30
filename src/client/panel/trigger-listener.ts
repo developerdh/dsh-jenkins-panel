@@ -1,5 +1,5 @@
 /**
- * 触发联动（0.1.5 换通道；原实现：panel-host 扫描 `SessionSnapshot.nodes`）
+ * 触发联动（0.1.5 换通道；0.2.0 判定迁移；原实现：panel-host 扫描 `SessionSnapshot.nodes`）
  *
  * ⚠️ 迁移依据（影响报告 §4.2 + 0.1.5 实测）：0.1.5 删除了 `SessionSnapshot.nodes`，
  * 原「扫描会话快照里 tool-result 节点」的路径必然静默失效。报告推荐的「秒级轮询
@@ -9,10 +9,15 @@
  * 语义与原扫描等价且不依赖任何宿主内部结构。
  *
  * 实测要点（决定了实现形态）：
- * - `tool/result` 事件**不含工具名**，只有 `data.message.source.callId`；工具名在配对的
- *   `tool/call`（`data.callId` + `data.name`）。故本 Definition 必须**同时**匹配两类事件，
- *   以 callId 为 Context 身份：`tool/call` = start（记住 name），`tool/result` = update
- *   （比对 name 是否命中触发类工具、是否报错）。
+ * - `tool/result` 事件**不含工具名**；工具名在配对的 `tool/call`（`data.callId` +
+ *   `data.name`）。故本 Definition 必须**同时**匹配两类事件，以 callId 为 Context 身份：
+ *   `tool/call` = start（记住 name），`tool/result` = update（比对 name 是否命中触发
+ *   类工具、是否报错）。
+ * - 0.2.0 迁移（升级影响报告 §4.5）：`tool-result` 从 `ContentBlockMap` 整体移除，
+ *   `ToolResultMessage` 变为一级 `tool` role 消息——callId 改读消息一级字段
+ *   `data.message.toolCallId`（0.1.5 的 `data.message.source.callId` 旧路径废弃），
+ *   报错判定收敛到唯一判据 `data.message.isError === true`；`data.error` 只是 isError
+ *   的冗余投影，不再参与判定（0.1.5 的兜底路径删除）。
  * - 只消费 `surfaceOp === 'append'` 的 result（官方 chat 同款）：替换副本不属用户可见记录。
  *
  * 行为保持（与 0.1.1 版逐条对照）：
@@ -30,7 +35,7 @@ export const TRIGGER_TOOL_NAMES = new Set(['jenkins_build_trigger', 'jenkins_bui
 /** definition kind（本插件自有命名空间，避免与官方 definition 撞 key） */
 export const DEFINITION_KIND = 'dsh-jenkins-panel-trigger-watch'
 
-/** 事件最小形状（0.1.5 SessionEvent；仅取本处需要的字段，形状不符即安全跳过） */
+/** 事件最小形状（0.2.0 SessionEvent；仅取本处需要的字段，形状不符即安全跳过） */
 interface EventLike {
   type?: string
   seq?: number
@@ -40,7 +45,9 @@ interface EventLike {
   data?: {
     callId?: unknown
     name?: unknown
-    message?: { source?: { callId?: unknown }; content?: Array<{ isError?: unknown }> }
+    /** 0.2.0：ToolResultMessage 一级字段（toolCallId/isError）；旧 source.callId / content block 路径已废弃 */
+    message?: { toolCallId?: unknown; isError?: unknown }
+    /** 0.2.0：失败时的冗余投影 `{ name, code, reason? }`，不参与 isError 判定 */
     error?: unknown
   }
 }
@@ -61,15 +68,17 @@ export function readToolCall(event: EventLike): { callId: string; name: string }
   return { callId, name }
 }
 
-/** 从 tool/result 事件取 `{ callId, isError }`；非 append 副本 / 形状不符 → null */
+/** 从 tool/result 事件取 `{ callId, isError }`（0.2.0 合同）；非 append 副本 / 形状不符 → null */
 export function readToolResult(event: EventLike): { callId: string; isError: boolean } | null {
   if (event?.type !== 'tool/result') return null
   // 只认 append 来源（官方 chat 同款：替换副本是模型侧影子，非用户可见记录）
   if (event.surfaceOp !== undefined && event.surfaceOp !== 'append') return null
-  const callId = event.data?.message?.source?.callId
+  const message = event.data?.message
+  // callId 唯一来源：ToolResultMessage 一级字段 toolCallId（0.2.0；不走旧 source.callId）
+  const callId = message?.toolCallId
   if (typeof callId !== 'string' || callId === '') return null
-  const block = event.data?.message?.content?.[0]
-  return { callId, isError: block?.isError === true || event.data?.error !== undefined }
+  // isError 唯一判据：消息一级字段（data.error 是冗余投影，不参与判定）
+  return { callId, isError: message?.isError === true }
 }
 
 /**
